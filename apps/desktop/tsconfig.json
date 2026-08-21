@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "composite": true,
+    "noEmit": true
+  },
+  "include": [
+    "renderer/src/**/*",
+    "electron/**/*",
+    "preload/**/*",
+    "test/**/*"
+  ],
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/validation" },
+    { "path": "../../packages/database" }
+  ]
+}

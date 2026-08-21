@@ -1,0 +1,42 @@
+{
+  "name": "jobpilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JobPilot - AI-Assisted Job Application Automation Desktop Application",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@jobpilot/desktop",
+    "dev:api": "npm run dev --workspace=@jobpilot/api",
+    "dev:desktop": "npm run dev --workspace=@jobpilot/desktop",
+    "build:packages": "npm run build --workspace=@jobpilot/types && npm run build --workspace=@jobpilot/shared && npm run build --workspace=@jobpilot/validation && npm run build --workspace=@jobpilot/database",
+    "build": "npm run build:packages && npm run build --workspace=@jobpilot/api && npm run build --workspace=@jobpilot/desktop",
+    "lint": "eslint .",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,css,md}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^22.13.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "eslint": "^9.20.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.5.1",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.5"
+  }
+}

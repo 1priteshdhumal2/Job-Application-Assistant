@@ -1,0 +1,35 @@
+{
+  "name": "@jobpilot/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JobPilot Electron and React Desktop Application",
+  "main": "./dist-electron/electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.electron.json && vite build",
+    "start": "electron dist-electron/electron/main.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist dist-electron"
+  },
+  "dependencies": {
+    "@jobpilot/database": "*",
+    "@jobpilot/shared": "*",
+    "@jobpilot/types": "*",
+    "@jobpilot/validation": "*",
+    "@supabase/supabase-js": "^2.49.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.2.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.5"
+  }
+}

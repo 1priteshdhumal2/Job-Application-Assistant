@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true
+  },
+  "include": ["scripts/**/*", "docs/**/*"],
+  "references": [
+    { "path": "./packages/types" },
+    { "path": "./packages/validation" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/database" },
+    { "path": "./services/api" },
+    { "path": "./apps/desktop" }
+  ]
+}
