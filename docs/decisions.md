@@ -75,7 +75,7 @@ Scattering `createClient` calls throughout the codebase creates duplicate connec
 Create `@jobpilot/database` as the sole owner of Supabase client instantiation:
 
 - Provide `createSupabaseBrowserClient` and `getSupabaseBrowserClient` strictly consuming validated client-safe environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
-- Service-role clients are explicitly prohibited in Phase 2A and will never be exposed to the renderer or browser contexts.
+- Service-role clients are explicitly prohibited in Phase 2A/2B and will never be exposed to the renderer or browser contexts.
 
 ### Consequences
 
@@ -101,6 +101,7 @@ Use **Zod** in `@jobpilot/validation` for all runtime validation. Separate envir
 1. `clientEnvSchema`: Client-safe variables (prefixed with `VITE_`).
 2. `serverEnvSchema`: Server-only variables (Node.js API).
 3. `desktopConfigSchema`: Desktop main process configurations.
+4. `fileValidationSchema` and `profileUpdateSchema`: Strict schema for user-uploaded documents and profile updates.
 
 ### Consequences
 
@@ -130,7 +131,7 @@ Use **Supabase PostgreSQL** (cloud-hosted project) as the database backend. Loca
 
 ---
 
-## ADR 006: Delayed Application Database Schema Implementation
+## ADR 006: Delayed Domain Database Schema Implementation
 
 ### Status
 
@@ -138,13 +139,87 @@ Accepted
 
 ### Context
 
-Phase 2A focuses solely on foundation infrastructure (repository, Electron, React, Node.js API health, Supabase Auth setup, tooling). Creating full database schemas (profiles, jobs, applications) prematurely risks churn before domain requirements are solidified.
+Phase 2A focused solely on foundation infrastructure (repository, Electron, React, Node.js API health, Supabase Auth setup, tooling). Full domain database schemas (`jobs`, `applications`, `experiences`, `skills`, `ai_runs`, etc.) are deferred to Phase 2C.
 
 ### Decision
 
-Defer application schema creation (`00001_initial_auth_schema.sql`, `profiles`, `jobs`, `applications`, etc.) to **Phase 2C**. Phase 2A uses Supabase's native `auth.users` for authentication without creating custom application tables.
+Defer application domain schema creation to **Phase 2C**. Phase 2B implements ONLY the minimal identity `profiles` table and `user-documents` storage bucket.
 
 ### Consequences
 
-- Clean boundary for Phase 2A foundation.
-- Schema design and migrations can be methodically planned in Phase 2C.
+- Clean boundaries across roadmap phases.
+- Minimal scope creep and high maintainability.
+
+---
+
+## ADR 007: Minimal Profiles Table & Database Trigger Identity Model
+
+### Status
+
+Accepted
+
+### Context
+
+User accounts are managed by Supabase Auth (`auth.users`). In order to attach application profile data (`display_name`, `avatar_url`, `onboarding_status`) without trusting client-side profile creation or creating synchronization race conditions, a deterministic identity link is required.
+
+### Decision
+
+1. Create a minimal `public.profiles` table with `id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`.
+2. Attach a PostgreSQL `AFTER INSERT` trigger (`handle_new_user()`) on `auth.users` with `SECURITY DEFINER` and `SET search_path = public` to automatically insert a profile row upon registration.
+3. Apply Row Level Security (RLS) on `profiles`:
+   - `SELECT`: `auth.uid() = id`
+   - `UPDATE`: `auth.uid() = id`
+   - `INSERT` / `DELETE`: Denied to normal clients.
+4. Services derive identity from `supabase.auth.getUser()`, eliminating caller-provided `userId` parameters.
+
+### Consequences
+
+- Guaranteed 1-to-1 mapping between `auth.users` and `public.profiles`.
+- Zero client-side race conditions or spoofed profile insertions.
+- Zero raw user IDs passed from renderer components into data access services.
+
+---
+
+## ADR 008: Private Storage Bucket (`user-documents`) & Folder-Based RLS
+
+### Status
+
+Accepted
+
+### Context
+
+JobPilot stores user resumes, cover letters, certificates, and portfolio documents. These documents contain confidential PII and must never be public or accessible across different users.
+
+### Decision
+
+1. Create a private bucket `user-documents` (`public = false`, 25MB limit, PDF/DOCX/XLSX only).
+2. Enforce folder-based RLS on `storage.objects` where `(storage.foldername(name))[1] = auth.uid()::text`.
+3. Path structure: `user-documents/{authenticated_user_id}/{category}/{unique_sanitized_name}`.
+4. Categories restricted to: `resumes`, `cover-letters`, `certificates`, `portfolio`, `other`.
+5. Storage service functions (`uploadCurrentUserDocument`, `listCurrentUserDocuments`, `downloadCurrentUserDocument`, `deleteCurrentUserDocument`) strictly validate ownership on the client before request dispatch.
+
+### Consequences
+
+- Full cross-tenant isolation enforced at database/storage RLS level.
+- Traversal attempts (`../`, `..\`) and unsupported MIME types are rejected at validation and storage layers.
+
+---
+
+## ADR 009: Strict Email Verification Gating
+
+### Status
+
+Accepted
+
+### Context
+
+Allowing unverified email accounts into the application shell risks phantom accounts, credential abuse, and broken delivery channels.
+
+### Decision
+
+Require email verification (`email_confirmed_at`) for email/password registrations. The application shell gates unverified accounts into a `VERIFICATION_REQUIRED` state with resend capabilities until confirmed. Google OAuth identities are inherently verified by the provider.
+
+### Consequences
+
+- Verified user identity baseline across all authentication methods.
+- Clear user guidance and smooth onboarding transitions.

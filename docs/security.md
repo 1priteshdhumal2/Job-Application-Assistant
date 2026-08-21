@@ -1,88 +1,99 @@
-# JobPilot Security Architecture & Guidelines
+# JobPilot Security Architecture
 
-## 1. Principles of Defense in Depth
+## 1. Electron Isolation Invariants
 
-JobPilot handles sensitive user workflows (credentials, resumes, application history) and will eventually interact with external job portals. The architecture enforces security boundaries by default.
-
----
-
-## 2. Electron Application Security
-
-### 2.1 Window WebPreferences Isolation
-
-Every `BrowserWindow` instance must enforce:
-
-```typescript
-webPreferences: {
-  preload: path.join(__dirname, '../preload/index.js'),
-  contextIsolation: true,
-  nodeIntegration: false,
-  sandbox: true,
-  webSecurity: true,
-}
-```
-
-- **`contextIsolation: true`**: Guarantees that preload scripts and renderer code run in completely separate JavaScript execution contexts.
-- **`nodeIntegration: false`**: Ensures Node.js global symbols (`require`, `process`, `Buffer`, `module`) are never injected into the renderer.
-- **`sandbox: true`**: Enables OS-level Chromium renderer process sandboxing.
-- **`webSecurity: true`**: Enforces the same-origin policy and blocks insecure mixed content.
-
----
-
-### 2.2 Strict IPC Architecture
-
-- **No Wildcard Channels**: Generic methods such as `ipcRenderer.send('arbitrary-channel', ...)` or `ipcRenderer.invoke(...)` are never exposed on `window`.
-- **Explicit Typed Contracts**: Preload scripts only expose dedicated functions:
-  ```typescript
-  window.jobPilot.getAppVersion();
-  window.jobPilot.getEnvironmentInfo();
-  ```
-
----
-
-### 2.3 Content Security Policy (CSP)
-
-A restrictive CSP is injected into all responses by the main process:
+The desktop renderer is treated as an isolated UI layer:
 
 ```text
-default-src 'self';
-script-src 'self' 'unsafe-inline';
-style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-font-src 'self' https://fonts.gstatic.com data:;
-connect-src 'self' https://*.supabase.co wss://*.supabase.co;
-img-src 'self' data: https:;
-object-src 'none';
-base-uri 'self';
-form-action 'self';
-frame-ancestors 'none';
+contextIsolation: true
+nodeIntegration: false
+sandbox: true
+webSecurity: true
 ```
 
----
-
-### 2.4 Controlled Navigation & Window Spawning
-
-- **`will-navigate`**: Electron intercepts all page navigation attempts. Any URL outside the authorized local application shell is blocked.
-- **`setWindowOpenHandler`**: Spawning new windows (via `window.open` or `<a target="_blank">`) is denied (`{ action: 'deny' }`).
+- **No Node.js in Renderer**: `process`, `require`, `fs`, and `child_process` are strictly undefined.
+- **Typed Preload Bridge**: Only explicit methods (`getAppVersion`, `getEnvironmentInfo`) are exposed via `window.jobPilot`.
+- **Navigation Lock**: Intercepts `will-navigate` and blocks `setWindowOpenHandler` to prevent arbitrary window or external origin loading.
+- **Content Security Policy (CSP)**: Disallows unsafe-eval and restricts connections strictly to localhost and authorized Supabase endpoints (`https://*.supabase.co`, `wss://*.supabase.co`).
 
 ---
 
-## 3. Remote Website & Portal Isolation
+## 2. Supabase Credential Boundaries
 
-> [!IMPORTANT]
-> **Third-Party Content Isolation Invariant**:
-> When JobPilot eventually interacts with third-party job portals (LinkedIn, Naukri, Indeed, etc.), untrusted portal content must NEVER receive access to:
->
-> 1. Electron privileged APIs or IPC bridges.
-> 2. Node.js runtime or local filesystem.
-> 3. Supabase service-role credentials or database keys.
-> 4. Application secrets or Gemini API keys.
-> 5. Main application cookies, local storage, or React state.
-
-All future portal automation must execute in isolated browser contexts (e.g. dedicated Playwright worker processes or sandboxed out-of-process webviews).
+| Key / Credential            | Scope           | Allowed Locations                  | Strictly Prohibited Locations                          |
+| :-------------------------- | :-------------- | :--------------------------------- | :----------------------------------------------------- |
+| `VITE_SUPABASE_ANON_KEY`    | Public / Client | `.env`, React renderer, desktop UI | Storing in database tables                             |
+| `SUPABASE_SERVICE_ROLE_KEY` | Admin / Backend | Backend services only              | React renderer, Preload, Electron main, `.env.example` |
+| `DATABASE_URL` (Direct PG)  | Backend Server  | Backend service only               | Client renderer, Preload                               |
 
 ---
 
-## 4. Supabase & Database Security
+## 3. Database Security & Trigger Hardening
 
-- **Public Anon Key**: Only `VITE_SUPABASE_ANON_KEY` is allowed in client-side code. It only permits operations governed by Row Level Security (RLS) policies.
-- **No Service-Role Key**: Service-role keys bypass RLS and are strictly prohibited from client bundles and desktop distributions.
+### Profile Trigger (`handle_new_user()`)
+
+- Defined with `SECURITY DEFINER` so it can write to `public.profiles` upon `auth.users` row creation.
+- **Hardening Rules**:
+  - `SET search_path = public`: Prevents malicious search path hijacking.
+  - Zero dynamic SQL (`EXECUTE`).
+  - Validates and sanitizes metadata extraction (`full_name`, `name`, `avatar_url`, `picture`).
+  - Does NOT copy unvetted JSON metadata blobs into columns.
+  - Catches exceptions gracefully without blocking user authentication.
+
+### Profiles Row Level Security (RLS)
+
+- `SELECT`: `auth.uid() = id` (User can only read their own profile).
+- `UPDATE`: `auth.uid() = id` (User can only edit their own profile).
+- `INSERT`: Denied to clients (Trigger-only creation prevents identity spoofing).
+- `DELETE`: Denied to clients (Account deletion managed by cascading `auth.users`).
+
+---
+
+## 4. Supabase Storage Security & Isolation
+
+### Bucket Configuration
+
+- Bucket: `user-documents`
+- `public = false` (Strictly private).
+- File size limit: `26214400` bytes (25 MB).
+- Allowed MIME types: `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+
+### Storage RLS Policies
+
+Folder-based ownership is enforced directly on `storage.objects`:
+
+```sql
+bucket_id = 'user-documents' AND (storage.foldername(name))[1] = auth.uid()::text
+```
+
+- A user authenticated as `User A` cannot list, read, update, or delete files stored under `user-documents/User_B/...`.
+- Unauthenticated requests are rejected.
+
+### Client-Side Validation & Path Traversal Protection
+
+- Rejects directory traversal patterns (`../`, `..\`).
+- Sanitizes file names to remove control characters and illegal symbols.
+- Generates collision-resistant unique filenames (`{prefix}-{randomId}.{ext}`).
+- Client service methods (`downloadCurrentUserDocument`, `deleteCurrentUserDocument`) pre-validate that the target path matches the session user before dispatching requests.
+
+---
+
+## 5. Security Credential Separation & Future Isolation
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                      Cloud Boundaries                       │
+│  - Supabase: User Profile, Application Data, Documents      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                     Local Secure Storage                    │
+│  - Future: Browser Session Credentials (Local OS Keychain)  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                     Isolated Web Content                    │
+│  - Third-party portals (LinkedIn, Indeed, etc.)             │
+│  - Sandboxed & isolated from application secrets            │
+└─────────────────────────────────────────────────────────────┘
+```

@@ -19,6 +19,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@jobpilot/shared": "*",
     "@jobpilot/types": "*",
     "@jobpilot/validation": "*",
     "@supabase/supabase-js": "^2.49.1"

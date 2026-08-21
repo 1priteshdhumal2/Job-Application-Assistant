@@ -1,52 +1,59 @@
-# JobPilot Environment Variables Matrix
+# Environment Configuration Guide
 
-This document defines all environment variables used in JobPilot, their execution scope, and security sensitivity.
+## Overview
 
-> [!CAUTION]
-> **Zero Secret Leaks**: Never commit `.env` files or hardcode real API keys/credentials into source code.
-
----
-
-## Variable Classification
-
-### 1. Client-Safe / Renderer Variables (Vite Prefixed)
-
-These variables are bundled into the client-side JavaScript code. They MUST NOT contain secret keys.
-
-| Variable Name            | Required | Default       | Description                                                        |
-| :----------------------- | :------- | :------------ | :----------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`      | Yes      | -             | Public URL for the Supabase project                                |
-| `VITE_SUPABASE_ANON_KEY` | Yes      | -             | Public anonymous key for client-side Supabase Auth                 |
-| `VITE_APP_ENV`           | No       | `development` | Environment label (`development`, `staging`, `production`, `test`) |
+JobPilot separates environment configurations across client (desktop renderer) and backend (API service) contexts.
 
 ---
 
-### 2. Server-Only Variables (Node.js Services)
+## 1. Environment Variable Template (`.env.example`)
 
-These variables are consumed only by backend services (`services/api`). They are NEVER exposed to the desktop renderer or browser.
+```bash
+# ==============================================================================
+# JobPilot - Environment Variables Template
+# Copy this file to .env and fill in your development values.
+# NEVER commit .env or secrets to version control.
+# ==============================================================================
 
-| Variable Name  | Required | Default       | Description                                                    |
-| :------------- | :------- | :------------ | :------------------------------------------------------------- |
-| `PORT`         | No       | `3001`        | HTTP port on which the Express API listens                     |
-| `NODE_ENV`     | No       | `development` | Node runtime environment (`development`, `production`, `test`) |
-| `API_BASE_URL` | No       | -             | Base URL of the API for self-reference or health checks        |
+# Client / Desktop Environment (Vite prefixed)
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_API_URL=http://localhost:3001
+VITE_APP_ENV=development
+
+# Server Environment (services/api)
+PORT=3001
+NODE_ENV=development
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# Optional direct Postgres database connection URL
+DATABASE_URL=postgresql://postgres:your-password@db.your-project-ref.supabase.co:5432/postgres
+
+# Desktop Process Configuration
+DESKTOP_LOG_LEVEL=info
+```
 
 ---
 
-### 3. Desktop-Local Variables (Electron Main Process)
+## 2. Supabase Dashboard Configuration
 
-These variables configure the Electron desktop application.
+### Authentication Setup
 
-| Variable Name       | Required | Default | Description                                          |
-| :------------------ | :------- | :------ | :--------------------------------------------------- |
-| `DESKTOP_LOG_LEVEL` | No       | `info`  | Minimum log level (`debug`, `info`, `warn`, `error`) |
+1. **Email Provider**:
+   - In Supabase Dashboard -> **Authentication** -> **Providers** -> **Email**:
+   - Enable Email provider.
+   - Set **Confirm email** to `ON` (Required for Phase 2B).
+2. **Google OAuth Provider**:
+   - In Supabase Dashboard -> **Authentication** -> **Providers** -> **Google**:
+   - Enable Google provider.
+   - Enter **Client ID** and **Client Secret** (from Google Cloud Console).
+   - Add Authorized Redirect URI from Supabase Dashboard to Google Cloud Console OAuth configuration:
+     `https://<project-ref>.supabase.co/auth/v1/callback`
+3. **Redirect URLs**:
+   - In **Authentication** -> **URL Configuration**:
+   - Site URL: `http://localhost:5173`
+   - Additional Redirect URLs: `http://localhost:5173/**`
 
----
+### Storage Setup
 
-## Prohibited Variables in Phase 2A
-
-The following variables are explicitly prohibited during Phase 2A and must NOT be added:
-
-- `SUPABASE_SERVICE_ROLE_KEY` (Not needed in Phase 2A; must never be in client bundles)
-- `GEMINI_API_KEY` (AI features deferred to future phases)
-- `LINKEDIN_*`, `NAUKRI_*` credentials (Browser automation deferred)
+- The migrations in `supabase/migrations/00003_create_storage_bucket_and_policies.sql` create and configure the `user-documents` bucket automatically with 25MB limit and allowed MIME types.

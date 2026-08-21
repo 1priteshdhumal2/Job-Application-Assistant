@@ -8,5 +8,9 @@
     "declarationMap": true
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../types" }, { "path": "../validation" }]
+  "references": [
+    { "path": "../types" },
+    { "path": "../shared" },
+    { "path": "../validation" }
+  ]
 }
