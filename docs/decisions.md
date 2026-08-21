@@ -223,3 +223,110 @@ Require email verification (`email_confirmed_at`) for email/password registratio
 
 - Verified user identity baseline across all authentication methods.
 - Clear user guidance and smooth onboarding transitions.
+
+---
+
+## ADR 010: JobPilot Canonical Domain Model & Entity Segregation
+
+### Status
+
+Accepted
+
+### Context
+
+The application needs to support structured professional profiles, job opportunities, applications, documents, canonical answer banks, and application-specific submitted answers without turning `profiles` into an unwieldy, monolithic table.
+
+### Decision
+
+Establish 14 dedicated domain tables:
+
+1. `profile_personal` (1-to-1 personal details)
+2. `experiences` (work history)
+3. `education` (degrees & institutions)
+4. `skills` (skills with case-insensitive uniqueness)
+5. `certifications` (credentials & verification links)
+6. `languages` (languages with case-insensitive uniqueness)
+7. `profile_links` (professional URLs)
+8. `profile_preferences` (search criteria & salary expectations)
+9. `documents` (file metadata pointing to `user-documents` bucket)
+10. `portals` (global catalog of job portals)
+11. `jobs` (user-scoped job postings)
+12. `applications` (user-scoped applications linking jobs & documents)
+13. `answer_bank` (canonical user answer repository)
+14. `application_answers` (historical question-answer snapshots)
+
+### Consequences
+
+- Clean normalization, high query performance, and modular feature evolution.
+- Minimal `profiles` identity table remains lightweight and performant.
+
+---
+
+## ADR 011: Application Question-Answer Snapshot Immutability
+
+### Status
+
+Accepted
+
+### Context
+
+Users modify their profile details (e.g., notice period, expected salary, current designation) over time. If historical job applications directly reference mutable profile or answer bank fields, past job applications would silently change their historical submission values.
+
+### Decision
+
+`application_answers` stores a point-in-time snapshot of the question and answer submitted for an application (`question_text`, `answer_value`, `source_type`, `answer_type`). Future modifications to the user's master profile or `answer_bank` will never alter past application answers.
+
+### Consequences
+
+- Full historical integrity and auditability of submitted job applications.
+- Clear separation between canonical defaults (`answer_bank`) and application submissions (`application_answers`).
+
+---
+
+## ADR 012: Database-Level Composite Foreign Key Cross-Tenant Isolation
+
+### Status
+
+Accepted
+
+### Context
+
+Relying exclusively on Row Level Security (RLS) or frontend validation to ensure that an application references the user's own job or documents creates vulnerability to subtle logic errors or misconfigured queries.
+
+### Decision
+
+Enforce tenant isolation directly at the database schema level using composite unique keys and composite foreign keys:
+
+- `applications (job_id, user_id)` references `jobs (id, user_id) ON DELETE CASCADE`.
+- `applications (resume_document_id, user_id)` references `documents (id, user_id) ON DELETE SET NULL`.
+- `applications (cover_letter_document_id, user_id)` references `documents (id, user_id) ON DELETE SET NULL`.
+- `application_answers (application_id, user_id)` references `applications (id, user_id) ON DELETE CASCADE`.
+
+### Consequences
+
+- Impossible for an application to reference another tenant's job or documents even if an attacker bypasses application-level checks.
+- Defense-in-depth: Schema-level relational guarantees coupled with PostgreSQL Row Level Security.
+
+---
+
+## ADR 013: Document Metadata Segregation from Supabase Object Storage
+
+### Status
+
+Accepted
+
+### Context
+
+Binary document files (resumes, cover letters, portfolios) must be securely stored, versioned, and associated with database entities without storing binary blobs inside PostgreSQL tables.
+
+### Decision
+
+1. Binary files are stored exclusively in the private Supabase Storage bucket `user-documents`.
+2. `public.documents` stores structured metadata (`document_type`, `category`, `storage_path`, `mime_type`, `file_size`, `version`, `is_active`).
+3. Database check constraints enforce that `storage_path` matches the tenant convention `{user_id}/{category}/{filename}`.
+
+### Consequences
+
+- Optimal database performance and lightweight relational queries.
+- Zero binary data stored in PostgreSQL rows.
+- Strict consistency between metadata and storage objects.

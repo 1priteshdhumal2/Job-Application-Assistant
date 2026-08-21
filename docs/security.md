@@ -97,3 +97,31 @@ bucket_id = 'user-documents' AND (storage.foldername(name))[1] = auth.uid()::tex
 │  - Sandboxed & isolated from application secrets            │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 6. Phase 2C-1 Domain Security & Composite FK Tenant Isolation
+
+### Composite Foreign Key Defense in Depth
+
+To prevent cross-tenant object manipulation (such as attaching User B's resume to User A's job application, or linking User A's application to User B's job posting), the database schema utilizes composite unique constraints and composite foreign keys:
+
+1. **`public.jobs`**: `UNIQUE (id, user_id)`
+2. **`public.documents`**: `UNIQUE (id, user_id)`
+3. **`public.applications`**: `UNIQUE (id, user_id)`
+4. **Relational Constraints**:
+   - `applications (job_id, user_id) REFERENCES jobs (id, user_id) ON DELETE CASCADE`
+   - `applications (resume_document_id, user_id) REFERENCES documents (id, user_id) ON DELETE SET NULL`
+   - `applications (cover_letter_document_id, user_id) REFERENCES documents (id, user_id) ON DELETE SET NULL`
+   - `application_answers (application_id, user_id) REFERENCES applications (id, user_id) ON DELETE CASCADE`
+
+### Table Privilege Grants & RLS Policies
+
+- **User-Owned Tables (13 tables)**:
+  - Row Level Security (RLS) is enabled.
+  - Policies enforce `auth.uid() = user_id` for SELECT, INSERT, UPDATE, and DELETE.
+  - Grants: `GRANT SELECT, INSERT, UPDATE, DELETE TO authenticated; REVOKE ALL FROM anon;`
+- **Global Reference Table (`portals`)**:
+  - Row Level Security enabled.
+  - Policy: `SELECT` allowed for `authenticated` users (`USING (true)`).
+  - Grants: `GRANT SELECT TO authenticated; REVOKE ALL FROM anon; REVOKE INSERT, UPDATE, DELETE FROM authenticated;`

@@ -71,7 +71,7 @@ Job-Application-Assistant/
 
 ---
 
-## Identity & Storage Data Boundaries
+## Identity, Storage & Domain Data Boundaries
 
 1. **User Identity (`public.profiles`)**:
    - Primary key directly references `auth.users(id) ON DELETE CASCADE`.
@@ -81,5 +81,15 @@ Job-Application-Assistant/
    - Private bucket with 25MB file size limit and strict MIME validation (PDF, DOCX, XLSX).
    - Folder isolation enforced via Storage RLS: `{user_id}/{category}/{filename}`.
    - Client functions derive user identity automatically from active session token.
-3. **No Domain Schema in Phase 2B**:
-   - Tables such as `jobs`, `applications`, `experiences`, `skills`, `ai_runs`, and `documents` (metadata) are strictly deferred to **Phase 2C**.
+3. **Phase 2C-1 Canonical Domain Model (14 Tables)**:
+   - **Master Profile Tables**: `profile_personal`, `experiences`, `education`, `skills`, `certifications`, `languages`, `profile_links`, `profile_preferences`.
+   - **Document Metadata**: `documents` (pointing to `user-documents` storage paths, versioned, zero file bytes in DB).
+   - **Reference Catalog**: `portals` (global read-only reference data seeded with 7 portals).
+   - **Job Tracking**: `jobs` (user-scoped job opportunities).
+   - **Applications**: `applications` (user-scoped application records linked to jobs and documents).
+   - **Answer Bank & Historical Snapshots**: `answer_bank` (canonical user defaults) and `application_answers` (immutable submitted question-answer snapshots).
+4. **Database-Level Composite Tenant Integrity**:
+   - `applications (job_id, user_id)` -> `jobs (id, user_id)`
+   - `applications (resume_document_id, user_id)` -> `documents (id, user_id)`
+   - `applications (cover_letter_document_id, user_id)` -> `documents (id, user_id)`
+   - `application_answers (application_id, user_id)` -> `applications (id, user_id)`

@@ -138,3 +138,26 @@ user-documents/                         user-documents/
    SELECT B: DENY      SELECT B: ALLOW     SELECT B: DENY
    DELETE A: ALLOW     DELETE A: DENY      DELETE A: DENY
 ```
+
+---
+
+## 6. JobPilot Domain Entity Relationships & Application Snapshot Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Profile as Profile Domain (Personal, Experience, Skills)
+    participant Storage as Documents Table & Storage Bucket
+    participant Job as Jobs Table
+    participant App as Applications Table (Composite FK)
+    participant Snapshots as Application Answers (Immutable Snapshot)
+
+    User->>Profile: Updates master profile details (e.g. designation, notice period)
+    User->>Storage: Uploads document metadata & file (Resume v1, v2)
+    User->>Job: Captures / Saves Job Posting (e.g. from LinkedIn)
+    User->>App: Creates Application for Job with Resume Document
+    Note over App: Database enforces composite FK:<br/>(job_id, user_id) REFERENCES jobs(id, user_id)<br/>(resume_id, user_id) REFERENCES documents(id, user_id)
+    User->>Snapshots: Submits Application Answers (e.g. Notice Period, Expected CTC)
+    Note over Snapshots: Snapshot stores submitted value.<br/>Future profile updates DO NOT modify past application_answers!
+```
