@@ -10,3 +10,4 @@ export * from "./portal-domain.js";
 export * from "./job-domain.js";
 export * from "./application-domain.js";
 export * from "./answer-domain.js";
+export * from "./pagination.js";

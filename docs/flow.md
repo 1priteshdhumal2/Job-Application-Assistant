@@ -143,7 +143,7 @@ user-documents/                         user-documents/
 
 ## 6. JobPilot Domain Entity Relationships & Application Snapshot Flow
 
-```mermaid
+````mermaid
 sequenceDiagram
     autonumber
     actor User
@@ -160,4 +160,79 @@ sequenceDiagram
     Note over App: Database enforces composite FK:<br/>(job_id, user_id) REFERENCES jobs(id, user_id)<br/>(resume_id, user_id) REFERENCES documents(id, user_id)
     User->>Snapshots: Submits Application Answers (e.g. Notice Period, Expected CTC)
     Note over Snapshots: Snapshot stores submitted value.<br/>Future profile updates DO NOT modify past application_answers!
+
+---
+
+## 7. Phase 2C-2 Atomic State Machine & Document Replacement Flow
+
+### Atomic Application Status Transition
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Service as Applications Service
+    participant RPC as transition_application_status (PostgreSQL RPC)
+    participant DB as Applications Table
+
+    Client->>Service: transitionApplicationStatus(appId, 'APPLIED')
+    Service->>RPC: RPC call with auth session header
+    Note over RPC: Verify auth.uid() IS NOT NULL
+    RPC->>DB: SELECT * FROM applications WHERE id=appId AND user_id=auth.uid() FOR UPDATE
+    alt Application Not Found or Soft-Deleted
+        DB-->>RPC: 0 rows returned
+        RPC-->>Service: Exception P0002 (APPLICATION_NOT_FOUND)
+        Service-->>Client: NotFoundError
+    else Application Found
+        Note over RPC: Evaluate state machine (SAVED -> APPLIED allowed)
+        alt Transition Illegal
+            RPC-->>Service: Exception P0001 (INVALID_STATUS_TRANSITION)
+            Service-->>Client: InvalidStateTransitionError
+        else Transition Allowed
+            RPC->>DB: UPDATE status='APPLIED', applied_at=NOW(), updated_at=NOW()
+            DB-->>RPC: Return updated Application row
+            RPC-->>Service: Return Application
+            Service-->>Client: Return Application
+        end
+    end
+````
+
+### Document Replacement & Storage Compensation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Service as Documents Service
+    participant Storage as Supabase Storage Bucket
+    participant RPC as create_document_version (PostgreSQL RPC)
+    participant DB as Documents Table
+
+    Client->>Service: replaceDocumentVersion(groupId, { file, fileName })
+    Service->>DB: Query current active document metadata for groupId
+    DB-->>Service: Return active DocumentRecord
+    Service->>Storage: Upload binary to user-documents/{userId}/{category}/{uniqueName}
+    alt Storage Upload Fails
+        Storage-->>Service: Upload Error
+        Service-->>Client: StorageError
+    else Storage Upload Succeeds
+        Storage-->>Service: Upload OK
+        Service->>RPC: RPC create_document_version(groupId, storagePath, metadata...)
+        alt RPC / DB Version Creation Fails
+            RPC-->>Service: DB / RPC Error
+            Note over Service: Storage Compensation Triggered
+            Service->>Storage: Delete orphan newly-uploaded binary
+            Service-->>Client: DatabaseError / ConflictError / ForbiddenError
+        else RPC / DB Version Creation Succeeds
+            Note over RPC: Lock active row FOR UPDATE,<br/>deactivate old version (is_active=false),<br/>insert new version (version=v+1, is_active=true)
+            RPC->>DB: Atomically update & insert
+            DB-->>RPC: Return new DocumentRecord
+            RPC-->>Service: Return DocumentRecord
+            Service-->>Client: Return new DocumentRecord
+        end
+    end
+```
+
+```
+
 ```

@@ -29,71 +29,103 @@ export const profilePersonalSchema = z.object({
   willing_to_relocate: z.boolean().nullable().optional(),
 });
 
-export const experienceSchema = z
-  .object({
-    company_name: z.string().trim().min(1, "Company name is required").max(200),
-    job_title: z.string().trim().min(1, "Job title is required").max(200),
-    employment_type: z.string().trim().max(100).nullable().optional(),
-    location: z.string().trim().max(200).nullable().optional(),
-    start_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid start date format (YYYY-MM-DD)"),
-    end_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid end date format (YYYY-MM-DD)")
-      .nullable()
-      .optional(),
-    is_current: z.boolean().default(false),
-    description: z.string().trim().max(5000).nullable().optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.is_current && data.end_date) {
-        return false;
-      }
-      if (data.start_date && data.end_date) {
-        return new Date(data.end_date) >= new Date(data.start_date);
-      }
-      return true;
-    },
-    {
-      message:
-        "End date must be after start date, and cannot be set for current employment",
-      path: ["end_date"],
-    },
-  );
+export const profilePersonalUpdateSchema = profilePersonalSchema.partial();
 
-export const educationSchema = z
-  .object({
-    institution: z.string().trim().min(1, "Institution is required").max(200),
-    degree: z.string().trim().max(200).nullable().optional(),
-    field_of_study: z.string().trim().max(200).nullable().optional(),
-    start_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid start date format (YYYY-MM-DD)")
-      .nullable()
-      .optional(),
-    end_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid end date format (YYYY-MM-DD)")
-      .nullable()
-      .optional(),
-    grade: z.string().trim().max(50).nullable().optional(),
-    location: z.string().trim().max(200).nullable().optional(),
-    description: z.string().trim().max(2000).nullable().optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.start_date && data.end_date) {
-        return new Date(data.end_date) >= new Date(data.start_date);
-      }
-      return true;
-    },
-    {
-      message: "End date must be after start date",
-      path: ["end_date"],
-    },
-  );
+export const baseExperienceSchema = z.object({
+  company_name: z.string().trim().min(1, "Company name is required").max(200),
+  job_title: z.string().trim().min(1, "Job title is required").max(200),
+  employment_type: z.string().trim().max(100).nullable().optional(),
+  location: z.string().trim().max(200).nullable().optional(),
+  start_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid start date format (YYYY-MM-DD)"),
+  end_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid end date format (YYYY-MM-DD)")
+    .nullable()
+    .optional(),
+  is_current: z.boolean().default(false),
+  description: z.string().trim().max(5000).nullable().optional(),
+});
+
+export const experienceSchema = baseExperienceSchema.refine(
+  (data) => {
+    if (data.is_current && data.end_date) {
+      return false;
+    }
+    if (data.start_date && data.end_date) {
+      return new Date(data.end_date) >= new Date(data.start_date);
+    }
+    return true;
+  },
+  {
+    message:
+      "End date must be after start date, and cannot be set for current employment",
+    path: ["end_date"],
+  },
+);
+
+export const experienceUpdateSchema = baseExperienceSchema.partial().refine(
+  (data) => {
+    if (data.is_current && data.end_date) {
+      return false;
+    }
+    if (data.start_date && data.end_date) {
+      return new Date(data.end_date) >= new Date(data.start_date);
+    }
+    return true;
+  },
+  {
+    message:
+      "End date must be after start date, and cannot be set for current employment",
+    path: ["end_date"],
+  },
+);
+
+export const baseEducationSchema = z.object({
+  institution: z.string().trim().min(1, "Institution is required").max(200),
+  degree: z.string().trim().max(200).nullable().optional(),
+  field_of_study: z.string().trim().max(200).nullable().optional(),
+  start_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid start date format (YYYY-MM-DD)")
+    .nullable()
+    .optional(),
+  end_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid end date format (YYYY-MM-DD)")
+    .nullable()
+    .optional(),
+  grade: z.string().trim().max(50).nullable().optional(),
+  location: z.string().trim().max(200).nullable().optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const educationSchema = baseEducationSchema.refine(
+  (data) => {
+    if (data.start_date && data.end_date) {
+      return new Date(data.end_date) >= new Date(data.start_date);
+    }
+    return true;
+  },
+  {
+    message: "End date must be after start date",
+    path: ["end_date"],
+  },
+);
+
+export const educationUpdateSchema = baseEducationSchema.partial().refine(
+  (data) => {
+    if (data.start_date && data.end_date) {
+      return new Date(data.end_date) >= new Date(data.start_date);
+    }
+    return true;
+  },
+  {
+    message: "End date must be after start date",
+    path: ["end_date"],
+  },
+);
 
 export const skillSchema = z.object({
   skill_name: z.string().trim().min(1, "Skill name is required").max(100),
@@ -111,28 +143,45 @@ export const skillSchema = z.object({
     .optional(),
 });
 
-export const certificationSchema = z
-  .object({
-    name: z.string().trim().min(1, "Certification name is required").max(200),
-    issuer: z.string().trim().max(200).nullable().optional(),
-    credential_id: z.string().trim().max(200).nullable().optional(),
-    issue_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid issue date format (YYYY-MM-DD)")
-      .nullable()
-      .optional(),
-    expiry_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid expiry date format (YYYY-MM-DD)")
-      .nullable()
-      .optional(),
-    verification_url: z
-      .string()
-      .url("Invalid verification URL")
-      .max(1000)
-      .nullable()
-      .optional(),
-  })
+export const skillUpdateSchema = skillSchema.partial();
+
+export const baseCertificationSchema = z.object({
+  name: z.string().trim().min(1, "Certification name is required").max(200),
+  issuer: z.string().trim().max(200).nullable().optional(),
+  credential_id: z.string().trim().max(200).nullable().optional(),
+  issue_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid issue date format (YYYY-MM-DD)")
+    .nullable()
+    .optional(),
+  expiry_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid expiry date format (YYYY-MM-DD)")
+    .nullable()
+    .optional(),
+  verification_url: z
+    .string()
+    .url("Invalid verification URL")
+    .max(1000)
+    .nullable()
+    .optional(),
+});
+
+export const certificationSchema = baseCertificationSchema.refine(
+  (data) => {
+    if (data.issue_date && data.expiry_date) {
+      return new Date(data.expiry_date) >= new Date(data.issue_date);
+    }
+    return true;
+  },
+  {
+    message: "Expiry date must be after issue date",
+    path: ["expiry_date"],
+  },
+);
+
+export const certificationUpdateSchema = baseCertificationSchema
+  .partial()
   .refine(
     (data) => {
       if (data.issue_date && data.expiry_date) {
@@ -151,11 +200,15 @@ export const languageSchema = z.object({
   proficiency: z.string().trim().max(50).nullable().optional(),
 });
 
+export const languageUpdateSchema = languageSchema.partial();
+
 export const profileLinkSchema = z.object({
   link_type: z.enum(PROFILE_LINK_TYPES as unknown as [string, ...string[]]),
   url: z.string().url("Invalid URL").max(1000),
   label: z.string().trim().max(100).nullable().optional(),
 });
+
+export const profileLinkUpdateSchema = profileLinkSchema.partial();
 
 export const profilePreferencesSchema = z.object({
   remote_preference: z.string().trim().max(100).nullable().optional(),
@@ -171,3 +224,6 @@ export const profilePreferencesSchema = z.object({
   preferred_currency: z.string().trim().max(10).nullable().optional(),
   willing_to_relocate: z.boolean().nullable().optional(),
 });
+
+export const profilePreferencesUpdateSchema =
+  profilePreferencesSchema.partial();

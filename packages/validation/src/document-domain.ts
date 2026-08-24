@@ -6,6 +6,7 @@ import { z } from "zod";
 import { DOCUMENT_TYPES, USER_DOCUMENT_CATEGORIES } from "@jobpilot/types";
 
 export const documentSchema = z.object({
+  document_group_id: z.string().uuid("Invalid document group ID").optional(),
   document_type: z.enum(DOCUMENT_TYPES as unknown as [string, ...string[]]),
   category: z.enum(
     USER_DOCUMENT_CATEGORIES as unknown as [string, ...string[]],

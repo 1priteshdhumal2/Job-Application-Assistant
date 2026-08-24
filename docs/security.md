@@ -110,10 +110,10 @@ To prevent cross-tenant object manipulation (such as attaching User B's resume t
 2. **`public.documents`**: `UNIQUE (id, user_id)`
 3. **`public.applications`**: `UNIQUE (id, user_id)`
 4. **Relational Constraints**:
-   - `applications (job_id, user_id) REFERENCES jobs (id, user_id) ON DELETE CASCADE`
+   - `applications (job_id, user_id) REFERENCES jobs (id, user_id) ON DELETE RESTRICT` (Job deletion is restricted if applications exist, preserving application history and immutable answers)
    - `applications (resume_document_id, user_id) REFERENCES documents (id, user_id) ON DELETE SET NULL`
    - `applications (cover_letter_document_id, user_id) REFERENCES documents (id, user_id) ON DELETE SET NULL`
-   - `application_answers (application_id, user_id) REFERENCES applications (id, user_id) ON DELETE CASCADE`
+   - `application_answers (application_id, user_id) REFERENCES applications (id, user_id)`
 
 ### Table Privilege Grants & RLS Policies
 
@@ -125,3 +125,24 @@ To prevent cross-tenant object manipulation (such as attaching User B's resume t
   - Row Level Security enabled.
   - Policy: `SELECT` allowed for `authenticated` users (`USING (true)`).
   - Grants: `GRANT SELECT TO authenticated; REVOKE ALL FROM anon; REVOKE INSERT, UPDATE, DELETE FROM authenticated;`
+
+---
+
+## 7. Phase 2C-2 Security Hardening & Isolation Controls
+
+### Application Answer Snapshot Immutability
+
+1. `UPDATE` and `DELETE` table grants on `public.application_answers` are revoked from `authenticated` and `anon`.
+2. Database trigger `trg_prevent_application_answer_mutation` on BEFORE `UPDATE` OR `DELETE` unconditionally blocks modification attempts at the PostgreSQL engine level.
+
+### Document Group Cross-Tenant Protection
+
+1. Stored function `public.create_document_version` pre-validates group ownership:
+   - If `document_group_id` exists, it verifies `user_id = auth.uid()`.
+   - Prevents a caller from injecting a new document version into another user's document group.
+2. Partial unique index `uq_documents_group_active ON documents (document_group_id) WHERE is_active = TRUE` guarantees exactly one active version per document group.
+
+### Stored Function RPC Privileges
+
+1. Stored functions `transition_application_status` and `create_document_version` are defined as `SECURITY INVOKER` with `SET search_path = public`.
+2. `EXECUTE` privileges on both functions are explicitly revoked from `PUBLIC` and `anon`, and granted strictly to `authenticated`.

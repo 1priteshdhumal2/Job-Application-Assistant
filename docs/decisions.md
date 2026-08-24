@@ -330,3 +330,168 @@ Binary document files (resumes, cover letters, portfolios) must be securely stor
 - Optimal database performance and lightweight relational queries.
 - Zero binary data stored in PostgreSQL rows.
 - Strict consistency between metadata and storage objects.
+
+---
+
+## ADR 014: Domain Service Layer Architecture & Session Identity Derivation
+
+### Status
+
+Accepted
+
+### Context
+
+The application requires a robust, type-safe data access layer across 14 domain services. Preventing cross-tenant data leakage requires strict session identity derivation without relying on caller-supplied user IDs.
+
+### Decision
+
+1. Every domain service method derives the active user identity via `requireAuthUser(supabase)`, which queries `supabase.auth.getUser()`.
+2. Caller-supplied user IDs are prohibited in all domain service parameters.
+3. Service queries inject `.eq('user_id', user.id)` as defense-in-depth alongside PostgreSQL Row Level Security (RLS).
+
+### Consequences
+
+- Zero risk of caller identity spoofing.
+- Immutable tenant isolation guaranteed at both application and database layers.
+
+---
+
+## ADR 015: Atomic Database-Level Application State Machine
+
+### Status
+
+Accepted
+
+### Context
+
+Application status transitions (SAVED -> INTERESTED -> APPLIED -> ASSESSMENT -> INTERVIEW -> OFFER -> REJECTED / WITHDRAWN) must execute atomically to prevent race conditions during concurrent state updates.
+
+### Decision
+
+Implement the state machine as a PostgreSQL `SECURITY INVOKER` function `public.transition_application_status`.
+The function locks the application row using `SELECT ... FOR UPDATE`, validates transitions, updates timestamps (`applied_at`, `submitted_at`), and treats same-status transitions as idempotent no-ops.
+
+### Consequences
+
+- Concurrency-safe status updates executed directly within PostgreSQL transactions.
+- Zero risk of race conditions or invalid status mutations.
+
+---
+
+## ADR 016: Application Soft Deletion & Active Record Isolation
+
+### Status
+
+Accepted
+
+### Context
+
+Soft deletion of job applications is required to allow users to archive applications while preserving historical records, linked documents, and immutable answer snapshots.
+
+### Decision
+
+Add `deleted_at TIMESTAMPTZ NULL` to `public.applications`.
+
+1. Standard listing/get functions (`listApplications`, `getApplication`) query `WHERE deleted_at IS NULL`.
+2. Dedicated functions (`listDeletedApplications`, `getDeletedApplication`, `restoreApplication`) query `WHERE deleted_at IS NOT NULL`.
+3. Soft-deleted applications cannot be updated, transitioned, or receive new answer snapshots.
+
+### Consequences
+
+- Clean separation between active work and deleted archives without data loss.
+- Invariants strictly maintained for deleted applications.
+
+---
+
+## ADR 017: Document Logical Group Identity, Versioning & Storage Compensation
+
+### Status
+
+Accepted
+
+### Context
+
+Multiple versions of a logical document (e.g., resume revisions) must be grouped together under a common identity while ensuring that exactly one version is active at any time. Storage upload failures must not leave orphan database rows or storage binaries.
+
+### Decision
+
+1. Add `document_group_id UUID NOT NULL` to `public.documents`.
+2. Enforce active version uniqueness using partial unique index `uq_documents_group_active ON documents (document_group_id) WHERE is_active = TRUE`.
+3. Implement atomic version replacement via PostgreSQL function `public.create_document_version`.
+4. Enforce storage compensation: if metadata insertion or RPC fails after binary upload, the service automatically deletes the newly uploaded orphan binary.
+
+### Consequences
+
+- Exactly one active document version per group.
+- Storage and database consistency preserved with zero orphaned binaries.
+
+---
+
+## ADR 018: Database-Enforced Immutable Application Answers
+
+### Status
+
+Accepted
+
+### Context
+
+Application answers are historical snapshots submitted for a specific job application. They must be immutable and immune to modification or deletion.
+
+### Decision
+
+1. Revoke `UPDATE` and `DELETE` table privileges on `public.application_answers` from `authenticated` and `anon`.
+2. Attach a BEFORE `UPDATE` OR `DELETE` database trigger `trg_prevent_application_answer_mutation` that unconditionally throws a PostgreSQL exception.
+3. Expose only `createApplicationAnswer`, `listApplicationAnswers`, and `getApplicationAnswer` in the service layer.
+
+### Consequences
+
+- Historical answers are immutable at both table privilege and database trigger levels.
+- Complete protection against future service or database mutation errors.
+
+---
+
+## ADR 019: Standard Collection Pagination, Filtering & Sorting
+
+### Status
+
+Accepted
+
+### Context
+
+Domain collections require consistent pagination, filtering, and sorting conventions while distinguishing naturally bounded collections from large paginated datasets.
+
+### Decision
+
+1. Large datasets (`jobs`, `applications`, `documents`, `answer_bank`) use `PaginatedResult<T>` with default page size 20 (max 100).
+2. Naturally bounded collections (`experiences`, `education`, `skills`, `certifications`, `languages`, `profile_links`, `portals`, `application_answers`) return arrays.
+3. Sorting enforces static field allowlists per service to prevent SQL injection or unindexed column sorting.
+
+### Consequences
+
+- Standardized, predictable API responses across all 14 services.
+- Protection against sorting on invalid or arbitrary columns.
+
+---
+
+## ADR 020: Job Deletion Restrict Invariant & Historical Application Preservation
+
+### Status
+
+Accepted
+
+### Context
+
+Deleting a Job opportunity must never destroy associated job applications, linked document references, or immutable application answer snapshots. Previously, foreign key cascading deletion allowed a job deletion to cascade into applications and attempt deleting immutable application answers.
+
+### Decision
+
+1. Migration `00007_job_deletion_restrict_fk.sql` replaces `ON DELETE CASCADE` with `ON DELETE RESTRICT` on foreign key `fk_applications_job_user`.
+2. Jobs with 0 applications may be physically deleted.
+3. Jobs with 1 or more applications cannot be physically deleted; PostgreSQL engine rejects deletion with foreign key restriction code `23503`.
+4. `deleteJob()` maps error code `23503` to `ConflictError("Job cannot be deleted because applications exist for this job")`.
+5. `00006_create_test_auth_users.sql` remains preserved as an applied remote migration to prevent migration history drift, while future test account provisioning is moved to dedicated test setup helpers.
+
+### Consequences
+
+- Database engine enforcement guarantees job deletion cannot destroy application history.
+- Historical application answers and document linkages remain 100% intact.

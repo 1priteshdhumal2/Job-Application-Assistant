@@ -28,6 +28,8 @@ export type ProfilePersonalInput = Omit<
   ProfilePersonal,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type ProfilePersonalCreateInput = ProfilePersonalInput;
+export type ProfilePersonalUpdateInput = Partial<ProfilePersonalInput>;
 
 export interface Experience {
   id: string;
@@ -48,6 +50,8 @@ export type ExperienceInput = Omit<
   Experience,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type ExperienceCreateInput = ExperienceInput;
+export type ExperienceUpdateInput = Partial<ExperienceInput>;
 
 export interface Education {
   id: string;
@@ -68,6 +72,8 @@ export type EducationInput = Omit<
   Education,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type EducationCreateInput = EducationInput;
+export type EducationUpdateInput = Partial<EducationInput>;
 
 export interface Skill {
   id: string;
@@ -84,6 +90,8 @@ export type SkillInput = Omit<
   Skill,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type SkillCreateInput = SkillInput;
+export type SkillUpdateInput = Partial<SkillInput>;
 
 export interface Certification {
   id: string;
@@ -102,6 +110,8 @@ export type CertificationInput = Omit<
   Certification,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type CertificationCreateInput = CertificationInput;
+export type CertificationUpdateInput = Partial<CertificationInput>;
 
 export interface Language {
   id: string;
@@ -116,6 +126,8 @@ export type LanguageInput = Omit<
   Language,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type LanguageCreateInput = LanguageInput;
+export type LanguageUpdateInput = Partial<LanguageInput>;
 
 export type ProfileLinkType =
   "LINKEDIN" | "GITHUB" | "PORTFOLIO" | "STACKOVERFLOW" | "OTHER";
@@ -142,6 +154,8 @@ export type ProfileLinkInput = Omit<
   ProfileLink,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type ProfileLinkCreateInput = ProfileLinkInput;
+export type ProfileLinkUpdateInput = Partial<ProfileLinkInput>;
 
 export interface ProfilePreferences {
   id: string;
@@ -162,3 +176,5 @@ export type ProfilePreferencesInput = Omit<
   ProfilePreferences,
   "id" | "user_id" | "created_at" | "updated_at"
 >;
+export type ProfilePreferencesCreateInput = ProfilePreferencesInput;
+export type ProfilePreferencesUpdateInput = Partial<ProfilePreferencesInput>;

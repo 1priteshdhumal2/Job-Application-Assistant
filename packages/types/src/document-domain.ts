@@ -18,6 +18,7 @@ export const DOCUMENT_TYPES: DocumentType[] = [
 export interface DocumentRecord {
   id: string;
   user_id: string;
+  document_group_id: string;
   document_type: DocumentType;
   category: UserDocumentCategory;
   name: string;
@@ -31,6 +32,7 @@ export interface DocumentRecord {
 }
 
 export type DocumentCreateInput = {
+  document_group_id?: string;
   document_type: DocumentType;
   category: UserDocumentCategory;
   name: string;

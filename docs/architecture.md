@@ -81,15 +81,20 @@ Job-Application-Assistant/
    - Private bucket with 25MB file size limit and strict MIME validation (PDF, DOCX, XLSX).
    - Folder isolation enforced via Storage RLS: `{user_id}/{category}/{filename}`.
    - Client functions derive user identity automatically from active session token.
-3. **Phase 2C-1 Canonical Domain Model (14 Tables)**:
-   - **Master Profile Tables**: `profile_personal`, `experiences`, `education`, `skills`, `certifications`, `languages`, `profile_links`, `profile_preferences`.
-   - **Document Metadata**: `documents` (pointing to `user-documents` storage paths, versioned, zero file bytes in DB).
-   - **Reference Catalog**: `portals` (global read-only reference data seeded with 7 portals).
-   - **Job Tracking**: `jobs` (user-scoped job opportunities).
-   - **Applications**: `applications` (user-scoped application records linked to jobs and documents).
-   - **Answer Bank & Historical Snapshots**: `answer_bank` (canonical user defaults) and `application_answers` (immutable submitted question-answer snapshots).
-4. **Database-Level Composite Tenant Integrity**:
-   - `applications (job_id, user_id)` -> `jobs (id, user_id)`
-   - `applications (resume_document_id, user_id)` -> `documents (id, user_id)`
-   - `applications (cover_letter_document_id, user_id)` -> `documents (id, user_id)`
+3. **Phase 2C-1 & 2C-2 Canonical Domain Model & Service Layer**:
+   - **Master Profile Services**: `profile_personal`, `experiences`, `education`, `skills`, `certifications`, `languages`, `profile_links`, `profile_preferences`.
+   - **Document Management**: `documents` service managing `document_group_id`, active version uniqueness via `uq_documents_group_active`, version RPC `create_document_version`, and storage upload compensation.
+   - **Reference Catalog**: `portals` (global read-only catalog).
+   - **Job Management**: `jobs` (user-scoped job opportunities).
+   - **Applications & Atomic State Machine**: `applications` service with soft-deletion (`deleted_at`), restoration (`restoreApplication`), and atomic status transitions via PostgreSQL function `transition_application_status`.
+   - **Answer Bank & Immutable Snapshots**: `answer_bank` and `application_answers` (strictly immutable at privilege and database trigger levels; no update/delete methods).
+4. **Database-Level Composite Tenant Integrity & Lifecycle Safeguards**:
+   - `applications (job_id, user_id)` -> `jobs (id, user_id) ON DELETE RESTRICT` (Job with applications cannot be deleted; preserves application history and immutable answer snapshots)
+   - `applications (resume_document_id, user_id)` -> `documents (id, user_id) ON DELETE SET NULL`
+   - `applications (cover_letter_document_id, user_id)` -> `documents (id, user_id) ON DELETE SET NULL`
    - `application_answers (application_id, user_id)` -> `applications (id, user_id)`
+5. **Phase 2C-2 Service Infrastructure (`packages/database/src/common/`)**:
+   - `auth.ts`: Strict session identity derivation (`requireAuthUser()`). Zero caller-supplied user IDs.
+   - `pagination.ts`: Clamped pagination envelope (`PaginatedResult<T>`) for jobs, applications, documents, answer bank.
+   - `sorting.ts`: Strict allowlist sorting validation.
+   - `errors.ts`: Deterministic mapping of PostgreSQL/RPC error codes to typed domain errors.
