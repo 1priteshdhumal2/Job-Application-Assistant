@@ -30,7 +30,10 @@ export function handleDatabaseError(
     const pgError = error as PostgrestError;
 
     // Custom RPC Exceptions
-    if (pgError.message.includes("INVALID_STATUS_TRANSITION")) {
+    if (
+      pgError.message.includes("INVALID_STATUS_TRANSITION") ||
+      pgError.message.includes("APPLICATION_STATUS_NOT_PREPARABLE")
+    ) {
       return new InvalidStateTransitionError(pgError.message, pgError);
     }
     if (pgError.message.includes("APPLICATION_NOT_FOUND")) {

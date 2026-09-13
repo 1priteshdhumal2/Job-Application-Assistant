@@ -2,6 +2,8 @@
 // Application Domain Contracts
 // ==============================================================================
 
+import { ApplicationAnswerInput } from "./answer-domain.js";
+
 export type ApplicationStatus =
   | "SAVED"
   | "INTERESTED"
@@ -33,6 +35,7 @@ export interface Application {
   resume_document_id: string | null;
   cover_letter_document_id: string | null;
   notes: string | null;
+  latest_preparation_id: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -40,6 +43,38 @@ export interface Application {
 
 export type ApplicationCreateInput = Omit<
   Application,
-  "id" | "user_id" | "created_at" | "updated_at" | "deleted_at"
+  | "id"
+  | "user_id"
+  | "created_at"
+  | "updated_at"
+  | "deleted_at"
+  | "latest_preparation_id"
 >;
 export type ApplicationUpdateInput = Partial<ApplicationCreateInput>;
+
+export interface ApplicationPreparation {
+  id: string;
+  user_id: string;
+  job_id: string;
+  application_id: string | null;
+  original_application_id: string;
+  preparation_number: number;
+  resume_document_id: string | null;
+  cover_letter_document_id: string | null;
+  notes: string | null;
+  status: ApplicationStatus;
+  idempotency_key: string;
+  payload_hash: string;
+  created_at: string;
+}
+
+export interface PrepareApplicationInput {
+  application_id?: string;
+  job_id?: string;
+  resume_document_id?: string | null;
+  cover_letter_document_id?: string | null;
+  notes?: string | null;
+  status?: "SAVED" | "INTERESTED";
+  idempotency_key?: string;
+  answers?: ApplicationAnswerInput[];
+}

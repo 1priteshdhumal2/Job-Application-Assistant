@@ -60,7 +60,7 @@ Enforce strict Electron security principles from day one:
 
 ---
 
-## ADR 003: Supabase Client Construction Abstraction
+## ADR 003: Database Isolation & Multi-Tenant Security via Supabase RLS
 
 ### Status
 
@@ -68,23 +68,23 @@ Accepted
 
 ### Context
 
-Scattering `createClient` calls throughout the codebase creates duplicate connections, makes key rotation difficult, and risks accidental leakage of privileged service-role credentials to client bundles.
+JobPilot handles sensitive personal user information (resumes, credentials, cover letters, application answers). Cross-tenant data leakage or unauthenticated mutations present severe security and privacy risks.
 
 ### Decision
 
-Create `@jobpilot/database` as the sole owner of Supabase client instantiation:
-
-- Provide `createSupabaseBrowserClient` and `getSupabaseBrowserClient` strictly consuming validated client-safe environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
-- Service-role clients are explicitly prohibited in Phase 2A/2B and will never be exposed to the renderer or browser contexts.
+1. Enable Row Level Security (RLS) across all user tables in `public` schema.
+2. Direct all authenticated queries through `auth.uid() = user_id` check policies.
+3. Restrict anon role privileges strictly to read-only global references (e.g. `portals`).
+4. Enforce tenant isolation directly at the PostgreSQL layer, making service bugs unable to leak data across users.
 
 ### Consequences
 
-- Single, consistent database access layer.
-- Enforced boundary preventing privileged keys from entering client bundles.
+- Zero reliance on application-layer query filtering alone for security.
+- Fully verified via automated cross-tenant integration test suites.
 
 ---
 
-## ADR 004: Runtime Validation with Zod
+## ADR 004: Pure Vanilla CSS & CSS Variables for Design Tokens
 
 ### Status
 
@@ -92,25 +92,20 @@ Accepted
 
 ### Context
 
-TypeScript types exist only at compile time and cannot validate external environment variables, API payloads, or configuration at runtime.
+The desktop client requires a sleek, modern, glassmorphic dark UI that is performant, maintainable, and free of unnecessary CSS build complexity.
 
 ### Decision
 
-Use **Zod** in `@jobpilot/validation` for all runtime validation. Separate environment schemas into:
-
-1. `clientEnvSchema`: Client-safe variables (prefixed with `VITE_`).
-2. `serverEnvSchema`: Server-only variables (Node.js API).
-3. `desktopConfigSchema`: Desktop main process configurations.
-4. `fileValidationSchema` and `profileUpdateSchema`: Strict schema for user-uploaded documents and profile updates.
+Use pure **Vanilla CSS** organized into clear semantic modules (`tokens.css`, `base.css`, `layout.css`, `components.css`, `glass.css`) with CSS custom properties (variables) representing design tokens. Avoid TailwindCSS in early phases to maximize design precision and minimize build dependencies.
 
 ### Consequences
 
-- Fail-fast initialization if configuration is missing or malformed.
-- Single source of truth for runtime validation and static TypeScript inference.
+- Fast compile and hot-reload times.
+- Transparent, highly inspectable styles with native CSS cascade and variables.
 
 ---
 
-## ADR 005: Supabase Hosted PostgreSQL as the Database
+## ADR 005: Clean Architecture Domain Model (Entities, DTOs, Mappers)
 
 ### Status
 
@@ -118,20 +113,23 @@ Accepted
 
 ### Context
 
-Developers on Windows systems may not have Docker or local PostgreSQL servers installed. Installing and maintaining local database engines creates development environment friction.
+Phase 2A requires establishing domain models for Profile, Job, Application, and Portal entities that decouple raw database rows from business logic and presentation layers.
 
 ### Decision
 
-Use **Supabase PostgreSQL** (cloud-hosted project) as the database backend. Local development does NOT require Docker or a local PostgreSQL instance.
+1. Database rows are typed strictly in `@jobpilot/types` (e.g., `ProfilePersonalRow`, `JobRow`).
+2. Domain entities are defined with rich behavior and immutability guarantees.
+3. Pure, bidirectional mapper functions (`toDomain`, `toPersistence`, `toDTO`) translate between layers.
+4. Validation is decoupled from persistence and handled via Zod schemas in `@jobpilot/validation`.
 
 ### Consequences
 
-- Zero local Docker or PostgreSQL prerequisites on the developer machine.
-- Direct connectivity to Supabase Auth and database via HTTPS/WebSockets.
+- Changes to database schemas do not directly break UI components or domain services.
+- Predictable, typed data transformations with runtime validation.
 
 ---
 
-## ADR 006: Delayed Domain Database Schema Implementation
+## ADR 006: Zod Runtime Schema Validation & Error Transformation
 
 ### Status
 
@@ -139,20 +137,22 @@ Accepted
 
 ### Context
 
-Phase 2A focused solely on foundation infrastructure (repository, Electron, React, Node.js API health, Supabase Auth setup, tooling). Full domain database schemas (`jobs`, `applications`, `experiences`, `skills`, `ai_runs`, etc.) are deferred to Phase 2C.
+User inputs across desktop forms, file uploads, and API endpoints require validation before hitting domain models or the database. Raw error structures from validation libraries leak implementation details and degrade UX.
 
 ### Decision
 
-Defer application domain schema creation to **Phase 2C**. Phase 2B implements ONLY the minimal identity `profiles` table and `user-documents` storage bucket.
+1. Centralize all validation rules in `@jobpilot/validation` using Zod.
+2. Implement custom validators for specific formats (UUID, ISO 8601 timestamps, semver, file extensions).
+3. Standardize error transformation into structured domain error objects (`ValidationError`, `FieldValidationError`).
 
 ### Consequences
 
-- Clean boundaries across roadmap phases.
-- Minimal scope creep and high maintainability.
+- Consistent validation error messages across all transports (desktop UI, REST API).
+- Safe parsing prevents malicious or malformed payloads from propagating.
 
 ---
 
-## ADR 007: Minimal Profiles Table & Database Trigger Identity Model
+## ADR 007: Supabase Client Architecture & Auth State Management
 
 ### Status
 
@@ -160,27 +160,23 @@ Accepted
 
 ### Context
 
-User accounts are managed by Supabase Auth (`auth.users`). In order to attach application profile data (`display_name`, `avatar_url`, `onboarding_status`) without trusting client-side profile creation or creating synchronization race conditions, a deterministic identity link is required.
+The application needs reliable authentication state management that handles session persistence, token refresh, and lifecycle events across both browser/renderer and Node.js environments.
 
 ### Decision
 
-1. Create a minimal `public.profiles` table with `id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`.
-2. Attach a PostgreSQL `AFTER INSERT` trigger (`handle_new_user()`) on `auth.users` with `SECURITY DEFINER` and `SET search_path = public` to automatically insert a profile row upon registration.
-3. Apply Row Level Security (RLS) on `profiles`:
-   - `SELECT`: `auth.uid() = id`
-   - `UPDATE`: `auth.uid() = id`
-   - `INSERT` / `DELETE`: Denied to normal clients.
-4. Services derive identity from `supabase.auth.getUser()`, eliminating caller-provided `userId` parameters.
+1. Create a singleton Supabase client wrapper in `@jobpilot/database`.
+2. Configure automatic token refresh and local storage session persistence for desktop clients.
+3. Provide reactive auth state listeners (`onAuthStateChange`) for UI state synchronization.
+4. Expose clean authentication abstractions (`signIn`, `signUp`, `signOut`, `getSession`, `getUser`).
 
 ### Consequences
 
-- Guaranteed 1-to-1 mapping between `auth.users` and `public.profiles`.
-- Zero client-side race conditions or spoofed profile insertions.
-- Zero raw user IDs passed from renderer components into data access services.
+- Centralized auth configuration simplifies environment management.
+- Transparent session recovery across desktop restarts.
 
 ---
 
-## ADR 008: Private Storage Bucket (`user-documents`) & Folder-Based RLS
+## ADR 008: File Storage Strategy & Document Upload Pipeline
 
 ### Status
 
@@ -188,24 +184,23 @@ Accepted
 
 ### Context
 
-JobPilot stores user resumes, cover letters, certificates, and portfolio documents. These documents contain confidential PII and must never be public or accessible across different users.
+Job applications require uploading and managing resumes, cover letters, and portfolio documents in various formats (PDF, DOCX) with size and type constraints.
 
 ### Decision
 
-1. Create a private bucket `user-documents` (`public = false`, 25MB limit, PDF/DOCX/XLSX only).
-2. Enforce folder-based RLS on `storage.objects` where `(storage.foldername(name))[1] = auth.uid()::text`.
-3. Path structure: `user-documents/{authenticated_user_id}/{category}/{unique_sanitized_name}`.
-4. Categories restricted to: `resumes`, `cover-letters`, `certificates`, `portfolio`, `other`.
-5. Storage service functions (`uploadCurrentUserDocument`, `listCurrentUserDocuments`, `downloadCurrentUserDocument`, `deleteCurrentUserDocument`) strictly validate ownership on the client before request dispatch.
+1. Use Supabase Storage private buckets (`documents`) with RLS policies restricting access to the file owner.
+2. Implement file validation pipeline in `@jobpilot/validation` enforcing file type allowlists (PDF, DOCX), magic-byte verification, and size caps (5MB max).
+3. Generate secure, short-lived signed URLs for document downloads/previews.
+4. Store metadata (file name, MIME type, size, hash, storage path) in `public.documents` table.
 
 ### Consequences
 
-- Full cross-tenant isolation enforced at database/storage RLS level.
-- Traversal attempts (`../`, `..\`) and unsupported MIME types are rejected at validation and storage layers.
+- Files are never stored in the database directly.
+- Private bucket access guarantees document confidentiality.
 
 ---
 
-## ADR 009: Strict Email Verification Gating
+## ADR 009: Standardized Domain Error Hierarchy
 
 ### Status
 
@@ -213,20 +208,30 @@ Accepted
 
 ### Context
 
-Allowing unverified email accounts into the application shell risks phantom accounts, credential abuse, and broken delivery channels.
+Error handling across services, IPC channels, and UI components was inconsistent, making error recovery, user notifications, and logging difficult.
 
 ### Decision
 
-Require email verification (`email_confirmed_at`) for email/password registrations. The application shell gates unverified accounts into a `VERIFICATION_REQUIRED` state with resend capabilities until confirmed. Google OAuth identities are inherently verified by the provider.
+Define a unified error hierarchy in `@jobpilot/shared`:
+
+- `JobPilotError` (base class)
+  - `NotFoundError` (resource does not exist)
+  - `ValidationError` (input validation failure)
+  - `ConflictError` (unique constraint or state conflict)
+  - `AuthError` (unauthenticated or unauthorized)
+  - `DatabaseError` (PostgreSQL / storage failure)
+  - `InvalidStateTransitionError` (state machine violation)
+
+All errors include machine-readable error codes, HTTP status mappings, and optional structured metadata.
 
 ### Consequences
 
-- Verified user identity baseline across all authentication methods.
-- Clear user guidance and smooth onboarding transitions.
+- Predictable error handling at all layers.
+- Error codes map cleanly to localized UI error messages.
 
 ---
 
-## ADR 010: JobPilot Canonical Domain Model & Entity Segregation
+## ADR 010: Job Status State Machine & Atomic Transitions
 
 ### Status
 
@@ -234,35 +239,23 @@ Accepted
 
 ### Context
 
-The application needs to support structured professional profiles, job opportunities, applications, documents, canonical answer banks, and application-specific submitted answers without turning `profiles` into an unwieldy, monolithic table.
+Job applications progress through distinct lifecycle stages (`SAVED` -> `INTERESTED` -> `APPLIED` -> `ASSESSMENT` -> `INTERVIEW` -> `OFFER` -> `REJECTED` / `WITHDRAWN`). Invalid transitions (e.g. `REJECTED` -> `APPLIED`) corrupt reporting and workflow automation.
 
 ### Decision
 
-Establish 14 dedicated domain tables:
-
-1. `profile_personal` (1-to-1 personal details)
-2. `experiences` (work history)
-3. `education` (degrees & institutions)
-4. `skills` (skills with case-insensitive uniqueness)
-5. `certifications` (credentials & verification links)
-6. `languages` (languages with case-insensitive uniqueness)
-7. `profile_links` (professional URLs)
-8. `profile_preferences` (search criteria & salary expectations)
-9. `documents` (file metadata pointing to `user-documents` bucket)
-10. `portals` (global catalog of job portals)
-11. `jobs` (user-scoped job postings)
-12. `applications` (user-scoped applications linking jobs & documents)
-13. `answer_bank` (canonical user answer repository)
-14. `application_answers` (historical question-answer snapshots)
+1. Implement an explicit state transition graph with allowed transition rules.
+2. Validate transitions in both TypeScript domain services and via PostgreSQL stored procedure `transition_application_status`.
+3. Auto-populate `applied_at` and `submitted_at` timestamps upon transition to `APPLIED`.
+4. Disallow transitions from terminal states (`REJECTED`, `WITHDRAWN`) unless explicitly reopened through an approved path.
 
 ### Consequences
 
-- Clean normalization, high query performance, and modular feature evolution.
-- Minimal `profiles` identity table remains lightweight and performant.
+- Impossible for applications to enter inconsistent or invalid lifecycle states.
+- Auditable status change history.
 
 ---
 
-## ADR 011: Application Question-Answer Snapshot Immutability
+## ADR 011: Document Logical Group Versioning & Active Constraint
 
 ### Status
 
@@ -270,20 +263,23 @@ Accepted
 
 ### Context
 
-Users modify their profile details (e.g., notice period, expected salary, current designation) over time. If historical job applications directly reference mutable profile or answer bank fields, past job applications would silently change their historical submission values.
+Users frequently upload revisions of resumes and cover letters. We must preserve historical versions while ensuring only one version per document group is marked active for automated application flows.
 
 ### Decision
 
-`application_answers` stores a point-in-time snapshot of the question and answer submitted for an application (`question_text`, `answer_value`, `source_type`, `answer_type`). Future modifications to the user's master profile or `answer_bank` will never alter past application answers.
+1. Introduce `document_group_id` UUID on `public.documents` to group versions together.
+2. Auto-increment `version` integer per `(user_id, document_group_id)`.
+3. Use PostgreSQL partial unique index `uq_documents_active_version` on `(user_id, document_group_id) WHERE is_active = true` to enforce at most one active version per group.
+4. Provide atomic RPC `create_document_version` that deactivates the previous active version and creates the new version in a single transaction.
 
 ### Consequences
 
-- Full historical integrity and auditability of submitted job applications.
-- Clear separation between canonical defaults (`answer_bank`) and application submissions (`application_answers`).
+- Historical document versions are preserved and immutable.
+- Eliminates race conditions in active document selection.
 
 ---
 
-## ADR 012: Database-Level Composite Foreign Key Cross-Tenant Isolation
+## ADR 012: Soft-Delete with Cascade Protection for Applications
 
 ### Status
 
@@ -291,25 +287,23 @@ Accepted
 
 ### Context
 
-Relying exclusively on Row Level Security (RLS) or frontend validation to ensure that an application references the user's own job or documents creates vulnerability to subtle logic errors or misconfigured queries.
+Users may remove applications from their active view, but historical data (applied jobs, answer snapshots, document references) must not be destroyed if referenced by audit logs or reporting.
 
 ### Decision
 
-Enforce tenant isolation directly at the database schema level using composite unique keys and composite foreign keys:
-
-- `applications (job_id, user_id)` references `jobs (id, user_id) ON DELETE CASCADE`.
-- `applications (resume_document_id, user_id)` references `documents (id, user_id) ON DELETE SET NULL`.
-- `applications (cover_letter_document_id, user_id)` references `documents (id, user_id) ON DELETE SET NULL`.
-- `application_answers (application_id, user_id)` references `applications (id, user_id) ON DELETE CASCADE`.
+1. Add `deleted_at TIMESTAMPTZ NULL` column to `public.applications`.
+2. Standard list queries automatically filter `deleted_at IS NULL`.
+3. Provide explicit `softDeleteApplication` and `restoreApplication` service methods.
+4. Maintain dedicated endpoints / filters for viewing and restoring archived applications.
 
 ### Consequences
 
-- Impossible for an application to reference another tenant's job or documents even if an attacker bypasses application-level checks.
-- Defense-in-depth: Schema-level relational guarantees coupled with PostgreSQL Row Level Security.
+- Accidental deletion is non-destructive and immediately recoverable.
+- Historical application records remain queryable for analytics.
 
 ---
 
-## ADR 013: Document Metadata Segregation from Supabase Object Storage
+## ADR 013: Answer Bank Normalization & Autofill Resolution Strategy
 
 ### Status
 
@@ -317,23 +311,23 @@ Accepted
 
 ### Context
 
-Binary document files (resumes, cover letters, portfolios) must be securely stored, versioned, and associated with database entities without storing binary blobs inside PostgreSQL tables.
+Job application forms frequently ask standard questions (e.g., "Years of React experience?", "Willing to relocate?", "Notice period?"). Users need a reusable answer repository that maps concepts to questions across different portals.
 
 ### Decision
 
-1. Binary files are stored exclusively in the private Supabase Storage bucket `user-documents`.
-2. `public.documents` stores structured metadata (`document_type`, `category`, `storage_path`, `mime_type`, `file_size`, `version`, `is_active`).
-3. Database check constraints enforce that `storage_path` matches the tenant convention `{user_id}/{category}/{filename}`.
+1. Create `public.answer_bank` table with `concept_key`, `canonical_answer`, `answer_type`, `sensitivity`, and `question_pattern`.
+2. Support three sensitivity levels: `NORMAL`, `SENSITIVE` (requires review before submission), `NEVER_AUTOFILL`.
+3. Use regex / keyword matching on `question_pattern` during autofill resolution.
+4. Record answer snapshot in `public.application_answers` upon preparation/submission for full immutability.
 
 ### Consequences
 
-- Optimal database performance and lightweight relational queries.
-- Zero binary data stored in PostgreSQL rows.
-- Strict consistency between metadata and storage objects.
+- High autofill accuracy for repetitive job portal questions.
+- User retains explicit control over sensitive data auto-submission.
 
 ---
 
-## ADR 014: Domain Service Layer Architecture & Session Identity Derivation
+## ADR 014: Unified IPC Contract for Desktop-to-Core Communication
 
 ### Status
 
@@ -341,22 +335,23 @@ Accepted
 
 ### Context
 
-The application requires a robust, type-safe data access layer across 14 domain services. Preventing cross-tenant data leakage requires strict session identity derivation without relying on caller-supplied user IDs.
+The Electron preload script exposed ad-hoc IPC methods without centralized type safety, risking contract drift between the main process and renderer.
 
 ### Decision
 
-1. Every domain service method derives the active user identity via `requireAuthUser(supabase)`, which queries `supabase.auth.getUser()`.
-2. Caller-supplied user IDs are prohibited in all domain service parameters.
-3. Service queries inject `.eq('user_id', user.id)` as defense-in-depth alongside PostgreSQL Row Level Security (RLS).
+1. Define a strongly-typed `JobPilotIpcBridge` interface in `@jobpilot/types`.
+2. Implement explicit request/response handlers in `apps/desktop/src/main/ipc/` categorized by domain (`profile`, `jobs`, `applications`, `documents`, `answers`).
+3. Standardize response payload format: `{ data?: T; error?: { code: string; message: string; details?: unknown } }`.
+4. Validate all IPC inputs with Zod schemas in the main process before invoking domain services.
 
 ### Consequences
 
-- Zero risk of caller identity spoofing.
-- Immutable tenant isolation guaranteed at both application and database layers.
+- Full compile-time type safety across IPC boundaries.
+- Main process acts as an untrusted-input firewall protecting domain services.
 
 ---
 
-## ADR 015: Atomic Database-Level Application State Machine
+## ADR 015: Fast Vitest Suite with Dual Unit and Remote Integration Tests
 
 ### Status
 
@@ -364,21 +359,27 @@ Accepted
 
 ### Context
 
-Application status transitions (SAVED -> INTERESTED -> APPLIED -> ASSESSMENT -> INTERVIEW -> OFFER -> REJECTED / WITHDRAWN) must execute atomically to prevent race conditions during concurrent state updates.
+Testing strategy must balance fast local feedback (mocked unit tests) with high-confidence verification against real Supabase infrastructure (RLS policies, triggers, RPCs, storage).
 
 ### Decision
 
-Implement the state machine as a PostgreSQL `SECURITY INVOKER` function `public.transition_application_status`.
-The function locks the application row using `SELECT ... FOR UPDATE`, validates transitions, updates timestamps (`applied_at`, `submitted_at`), and treats same-status transitions as idempotent no-ops.
+1. Use Vitest as the universal test runner across all packages and apps.
+2. Unit tests mock external dependencies (`SupabaseClient`, storage) for sub-millisecond execution.
+3. Integration tests execute against real remote Supabase instance verifying:
+   - RLS tenant isolation across two distinct test users.
+   - Database triggers and partial unique indexes.
+   - Storage upload, signed URL generation, and cleanup.
+   - Stored procedures and atomic transactions.
+4. Maintain 100% test pass rate with zero skips in CI/local runs.
 
 ### Consequences
 
-- Concurrency-safe status updates executed directly within PostgreSQL transactions.
-- Zero risk of race conditions or invalid status mutations.
+- Immediate unit test feedback during development.
+- Guaranteed real-world database and security policy verification.
 
 ---
 
-## ADR 016: Application Soft Deletion & Active Record Isolation
+## ADR 016: Zero-Warning TypeScript & ESLint Strictness
 
 ### Status
 
@@ -386,24 +387,22 @@ Accepted
 
 ### Context
 
-Soft deletion of job applications is required to allow users to archive applications while preserving historical records, linked documents, and immutable answer snapshots.
+Codebase quality and type safety degrade over time without strict compiler and linter enforcement.
 
 ### Decision
 
-Add `deleted_at TIMESTAMPTZ NULL` to `public.applications`.
-
-1. Standard listing/get functions (`listApplications`, `getApplication`) query `WHERE deleted_at IS NULL`.
-2. Dedicated functions (`listDeletedApplications`, `getDeletedApplication`, `restoreApplication`) query `WHERE deleted_at IS NOT NULL`.
-3. Soft-deleted applications cannot be updated, transitioned, or receive new answer snapshots.
+1. Base `tsconfig.base.json` with `strict: true`, `noImplicitAny: true`, `exactOptionalPropertyTypes: false`, `noUncheckedIndexedAccess: true`.
+2. Flat ESLint 9 configuration with `@typescript-eslint/recommended` and `eslint-config-prettier`.
+3. Zero-warning policy on `npm run lint`, `npm run typecheck`, and `npm run format:check`.
 
 ### Consequences
 
-- Clean separation between active work and deleted archives without data loss.
-- Invariants strictly maintained for deleted applications.
+- High code quality baseline with zero lint/type errors tolerated.
+- Consistent code formatting across all monorepo workspaces.
 
 ---
 
-## ADR 017: Document Logical Group Identity, Versioning & Storage Compensation
+## ADR 017: Multi-Tenant Data Isolation with RLS & Foreign Key Cascades
 
 ### Status
 
@@ -411,23 +410,22 @@ Accepted
 
 ### Context
 
-Multiple versions of a logical document (e.g., resume revisions) must be grouped together under a common identity while ensuring that exactly one version is active at any time. Storage upload failures must not leave orphan database rows or storage binaries.
+Cross-tenant data safety must be enforced at the schema and RLS level, not purely in application logic.
 
 ### Decision
 
-1. Add `document_group_id UUID NOT NULL` to `public.documents`.
-2. Enforce active version uniqueness using partial unique index `uq_documents_group_active ON documents (document_group_id) WHERE is_active = TRUE`.
-3. Implement atomic version replacement via PostgreSQL function `public.create_document_version`.
-4. Enforce storage compensation: if metadata insertion or RPC fails after binary upload, the service automatically deletes the newly uploaded orphan binary.
+1. Every user-owned table includes `user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`.
+2. Composite foreign keys `(job_id, user_id)` and `(application_id, user_id)` guarantee related records belong to the same tenant.
+3. Database RLS policies evaluate `auth.uid() = user_id` for all operations.
 
 ### Consequences
 
-- Exactly one active document version per group.
-- Storage and database consistency preserved with zero orphaned binaries.
+- Impossible for a user to attach their application to another user's job or document.
+- User account deletion cleanly cascades without orphaned records.
 
 ---
 
-## ADR 018: Database-Enforced Immutable Application Answers
+## ADR 018: Immutable Application Answer Snapshots
 
 ### Status
 
@@ -435,7 +433,7 @@ Accepted
 
 ### Context
 
-Application answers are historical snapshots submitted for a specific job application. They must be immutable and immune to modification or deletion.
+Once an application is prepared or submitted, the answers provided must remain permanently immutable for audit, history, and legal compliance.
 
 ### Decision
 
@@ -495,3 +493,114 @@ Deleting a Job opportunity must never destroy associated job applications, linke
 
 - Database engine enforcement guarantees job deletion cannot destroy application history.
 - Historical application answers and document linkages remain 100% intact.
+
+---
+
+## ADR 021: Repeatable Application Preparation & Immutable Snapshot Entity
+
+### Status
+
+Accepted
+
+### Context
+
+Job applications are frequently iterated, refined, or corrected over time (e.g. customized resume versions, tailored cover letters, updated salary expectations) prior to submission. Storing a single mutable draft state on `public.applications` destroys the historical record of what was prepared. Furthermore, deleting an application record must not erase preparation history.
+
+### Decision
+
+1. Preparation is strictly pre-submission: applications may only be prepared while in `SAVED` or `INTERESTED` status. Once an application reaches `APPLIED` (or terminal/post-submission states `ASSESSMENT`, `INTERVIEW`, `OFFER`, `REJECTED`, `WITHDRAWN`), further preparation attempts are strictly rejected (`APPLICATION_STATUS_NOT_PREPARABLE`).
+2. No synthetic `PREPARED`, `READY`, or `DRAFT` status exists; preparation produces an immutable snapshot while preserving `SAVED`/`INTERESTED` lifecycle state.
+3. Introduce `public.application_preparations` as an immutable snapshot entity tracking:
+   - `id`, `user_id`, `job_id`, `application_id`, `original_application_id`
+   - `preparation_number` (sequential 1, 2, 3...)
+   - `resume_document_id`, `cover_letter_document_id`, `notes`, `status`
+   - `idempotency_key`, `payload_hash`, `created_at`
+4. `application_preparations.application_id` uses `ON DELETE SET NULL`, while `original_application_id UUID NOT NULL` and `(job_id, user_id)` FKs preserve the historical identity and job linkage permanently even if the application is hard-deleted.
+5. Restructure `public.application_answers` to belong directly to a preparation via `preparation_id UUID NOT NULL REFERENCES application_preparations(id, user_id) ON DELETE CASCADE`.
+6. Add `applications.latest_preparation_id UUID NULL REFERENCES application_preparations(id, user_id) ON DELETE SET NULL` as a fast pointer to the most recent preparation designated for the next submission attempt.
+7. Attach immutability trigger `trg_prevent_application_prep_mutation` on `application_preparations` revoking `UPDATE` and `DELETE`.
+
+### Consequences
+
+- Complete historical auditability: every preparation preserves the exact resume version, cover letter version, answers, notes, and status at that point in time.
+- Preparation history permanently survives hard deletion of the parent application.
+- Preparation is strictly bounded to the pre-submission phase (`SAVED` and `INTERESTED`), preventing state corruption once an application is submitted.
+- Desktop UI integration of Phase 2C-3 domain workflows is deferred to future UI milestones.
+
+---
+
+## ADR 022: Physical Document Version Retention Invariant
+
+### Status
+
+Accepted
+
+### Context
+
+If a user uploads a new resume version, the old version becomes inactive (`is_active = false`). However, if historical application preparations reference the old version, physically deleting that document file would corrupt the historical preparation snapshot.
+
+### Decision
+
+1. Attach foreign keys `fk_app_prep_resume` and `fk_app_prep_cover` with `ON DELETE RESTRICT` from `application_preparations` to `public.documents(id, user_id)`.
+2. Inactive document versions can still be logically deactivated and replaced via `replaceDocumentVersion()`.
+3. Physical deletion (`DELETE FROM public.documents WHERE id = ...`) is rejected by PostgreSQL (`23503`) if referenced by any preparation snapshot.
+
+### Consequences
+
+- All document versions referenced by historical preparations remain physically retained for reproducible audit trails.
+- Logical version replacement and active state management continue to function seamlessly.
+
+---
+
+## ADR 023: PostgreSQL Idempotency & Concurrency Enforcement via `prepare_application` RPC
+
+### Status
+
+Accepted
+
+### Context
+
+Network retries, double-clicks, or concurrent desktop processes could attempt to prepare an application simultaneously, creating duplicate snapshots or corrupting preparation numbers. Application preparation must be strictly atomic and idempotent.
+
+### Decision
+
+1. Implement stored procedure `public.prepare_application` that executes atomically in a single PostgreSQL transaction.
+2. Acquire `FOR SHARE` locks on parent job and referenced documents, and `FOR UPDATE` lock on the application record.
+3. Enforce idempotency via unique constraint `uq_app_prep_user_idempotency` on `(user_id, idempotency_key)` and payload hash matching:
+   - Same `idempotency_key` + same payload hash -> Return existing application (idempotent success, zero duplicate preparation rows).
+   - Same `idempotency_key` + different payload hash -> Throw `409 Conflict` (`IDEMPOTENCY_KEY_PAYLOAD_MISMATCH`).
+4. Catch concurrent unique violations gracefully and return the committed application record.
+
+### Consequences
+
+- Zero duplicate preparations on network retries or concurrent invocations.
+- Strict serialization guarantees monotonically increasing `preparation_number` without gaps or collisions.
+
+---
+
+## ADR 024: Dedicated `@jobpilot/use-cases` Business Orchestration Layer
+
+### Status
+
+Accepted
+
+### Context
+
+Application workflows (e.g. preparing an application, status transitions, document version replacement) involve multi-step orchestration, schema validation, session extraction, and business logic. Coupling orchestration directly into transport handlers (Electron IPC, Express REST) causes duplicate logic and transport lock-in.
+
+### Decision
+
+1. Create `@jobpilot/use-cases` as an isolated workspace package between transport adapters and `@jobpilot/database`.
+2. Expose transport-agnostic use cases accepting `UseCaseContext { supabase: SupabaseClient }`:
+   - `executePrepareApplication`
+   - `executeTransitionApplicationStatus`
+   - `executeArchiveApplication`
+   - `executeRestoreApplication`
+   - `executeUploadUserDocument`
+   - `executeReplaceDocumentVersion`
+3. Restrict browser automation, portal scraping, and AI generation strictly to Phase 3.
+
+### Consequences
+
+- Desktop Electron IPC and REST API services share the exact same orchestration layer with zero code duplication.
+- Clean dependency tree: Transports -> Use Cases -> Database -> Types/Validation/Shared.

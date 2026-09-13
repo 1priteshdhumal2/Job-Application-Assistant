@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   answerBankSchema,
   applicationAnswerSchema,
-} from "../src/answer-domain";
+} from "../src/answer-domain.js";
 
 describe("Answer Domain Validation Schemas", () => {
   it("validates canonical answer bank entry and rejects empty answer", () => {
@@ -24,6 +24,7 @@ describe("Answer Domain Validation Schemas", () => {
 
   it("validates application answer snapshot entry", () => {
     const valid = applicationAnswerSchema.safeParse({
+      preparation_id: "00000000-0000-0000-0000-000000000001",
       application_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       concept_key: "expected_ctc",
       question_text: "Expected CTC in INR",
@@ -34,6 +35,7 @@ describe("Answer Domain Validation Schemas", () => {
     expect(valid.success).toBe(true);
 
     const invalidSource = applicationAnswerSchema.safeParse({
+      preparation_id: "00000000-0000-0000-0000-000000000001",
       application_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       question_text: "Expected CTC in INR",
       source_type: "INVALID_SOURCE",

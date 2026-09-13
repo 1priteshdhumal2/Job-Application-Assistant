@@ -78,92 +78,71 @@ sequenceDiagram
     Service-->>React: Return typed Profile object
     React-->>User: Display Form (Email, Name, Avatar, Status)
 
-    User->>React: Save Changes(display_name, avatar_url)
-    React->>Service: updateCurrentProfile(supabase, updates)
-    Service->>Service: validateProfileUpdate(updates) via Zod
+    User->>React: Submit New Display Name
+    React->>Service: updateCurrentProfile(supabase, { display_name })
     Service->>Client: supabase.auth.getUser()
-    Service->>DB: UPDATE profiles SET display_name=..., avatar_url=... WHERE id = auth.uid()
-    Note over DB: Enforces RLS & set_profiles_updated_at trigger
-    DB-->>Service: Return updated row
-    Service-->>React: Return updated Profile
+    Client-->>Service: Return authenticated User { id }
+    Service->>DB: UPDATE profiles SET display_name = ... WHERE id = auth.uid()
+    Note over DB: Enforces RLS & sets updated_at = NOW()
+    DB-->>Service: Return updated Profile row
+    Service-->>React: Return typed Profile object
+    React-->>User: Show Success Toast / Refresh Profile State
 ```
 
 ---
 
-## 4. User-Scoped Private Document Storage Flow
+## 4. Electron IPC Bridge Security Architecture
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Renderer as React Renderer (BrowserWindow)
+    participant Bridge as Preload contextBridge (window.jobPilot)
+    participant Main as Electron Main Process (IPC Handlers)
+    participant Validation as @jobpilot/validation (Zod)
+    participant Database as @jobpilot/database (Supabase Client)
+
+    Renderer->>Bridge: window.jobPilot.profile.update({ display_name })
+    Note over Bridge: contextIsolation: true<br/>nodeIntegration: false<br/>sandbox: true
+    Bridge->>Main: ipcRenderer.invoke('profile:update', payload)
+    Main->>Validation: profileSchema.parse(payload)
+    alt Validation Failure
+        Validation-->>Main: ZodError
+        Main-->>Renderer: Return { error: { code: 'VALIDATION_ERROR', ... } }
+    else Validation Success
+        Main->>Database: updateCurrentProfile(supabase, validatedPayload)
+        Database-->>Main: Return Profile
+        Main-->>Renderer: Return { data: Profile }
+    end
+```
+
+---
+
+## 5. Document Storage Upload Flow
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant React as StorageVerification.tsx
+    participant UI as Documents View
     participant Service as @jobpilot/database (storage.ts)
-    participant Validation as @jobpilot/validation (file.ts)
-    participant Client as Supabase Browser Client
-    participant Storage as Supabase Storage (user-documents)
+    participant Storage as Supabase Storage Bucket ('documents')
+    participant DB as PostgreSQL (public.documents)
 
-    User->>React: Select file (e.g. resume.pdf) & Category ("resumes")
-    React->>Validation: validateFileForUpload(file)
-    Note over Validation: Checks MIME in [pdf, docx, xlsx]<br/>Checks size <= 25MB<br/>Sanitizes filename (no ../ or ..\)
-    Validation-->>React: Valid: true, sanitizedName
-
-    React->>Service: uploadCurrentUserDocument(supabase, category, file, fileName)
-    Service->>Client: supabase.auth.getUser()
-    Client-->>Service: Return User { id }
-    Service->>Validation: generateStoragePath(user.id, category, fileName)
-    Note over Service: Path: {userId}/resumes/resume-uniqueId.pdf
-    Service->>Storage: upload(storagePath, file)
-    Note over Storage: Storage RLS Policy:<br/>(storage.foldername(name))[1] = auth.uid()
-    Storage-->>Service: Upload Success
-    Service-->>React: Return UserDocumentMetadata
-    React-->>User: Refresh list & show file
+    User->>UI: Select File (e.g. resume.pdf)
+    UI->>Service: uploadDocument(supabase, { file, category: 'resumes' })
+    Note over Service: 1. Validate file type (PDF/DOCX) & size (<5MB)<br/>2. Generate sanitized storage path: {userId}/resumes/{uuid}.pdf
+    Service->>Storage: upload(storagePath, file, { contentType })
+    Storage-->>Service: Upload OK
+    Service->>DB: INSERT INTO public.documents (user_id, file_name, file_path, ...)
+    DB-->>Service: Return Document row
+    Service-->>UI: Return Document metadata
+    UI-->>User: Display Document in Library
 ```
 
 ---
 
-## 5. Cross-Tenant Storage Isolation Enforcement
-
-```text
-User A (UUID: 1111-1111)                User B (UUID: 2222-2222)
-      │                                       │
-      ▼                                       ▼
-user-documents/                         user-documents/
-  1111-1111/resumes/resume.pdf            2222-2222/resumes/cv.docx
-      │                                       │
-      ├───────────────────┬───────────────────┤
-      │                   │                   │
-      ▼                   ▼                   ▼
-[User A Session]    [User B Session]    [Unauthenticated]
-   SELECT A: ALLOW     SELECT A: DENY      SELECT A: DENY
-   SELECT B: DENY      SELECT B: ALLOW     SELECT B: DENY
-   DELETE A: ALLOW     DELETE A: DENY      DELETE A: DENY
-```
-
----
-
-## 6. JobPilot Domain Entity Relationships & Application Snapshot Flow
-
-````mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Profile as Profile Domain (Personal, Experience, Skills)
-    participant Storage as Documents Table & Storage Bucket
-    participant Job as Jobs Table
-    participant App as Applications Table (Composite FK)
-    participant Snapshots as Application Answers (Immutable Snapshot)
-
-    User->>Profile: Updates master profile details (e.g. designation, notice period)
-    User->>Storage: Uploads document metadata & file (Resume v1, v2)
-    User->>Job: Captures / Saves Job Posting (e.g. from LinkedIn)
-    User->>App: Creates Application for Job with Resume Document
-    Note over App: Database enforces composite FK:<br/>(job_id, user_id) REFERENCES jobs(id, user_id)<br/>(resume_id, user_id) REFERENCES documents(id, user_id)
-    User->>Snapshots: Submits Application Answers (e.g. Notice Period, Expected CTC)
-    Note over Snapshots: Snapshot stores submitted value.<br/>Future profile updates DO NOT modify past application_answers!
-
----
-
-## 7. Phase 2C-2 Atomic State Machine & Document Replacement Flow
+## 6. Applications State Machine & Document Replacement Flow
 
 ### Atomic Application Status Transition
 
@@ -176,7 +155,7 @@ sequenceDiagram
     participant DB as Applications Table
 
     Client->>Service: transitionApplicationStatus(appId, 'APPLIED')
-    Service->>RPC: RPC call with auth session header
+    Service->>RPC: RPC transition_application_status(appId, 'APPLIED')
     Note over RPC: Verify auth.uid() IS NOT NULL
     RPC->>DB: SELECT * FROM applications WHERE id=appId AND user_id=auth.uid() FOR UPDATE
     alt Application Not Found or Soft-Deleted
@@ -195,7 +174,7 @@ sequenceDiagram
             Service-->>Client: Return Application
         end
     end
-````
+```
 
 ### Document Replacement & Storage Compensation
 
@@ -233,6 +212,41 @@ sequenceDiagram
     end
 ```
 
+---
+
+## 7. Repeatable Application Preparation & Use Cases Layer Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Adapter as Electron IPC / REST API Transport
+    participant UseCase as @jobpilot/use-cases (executePrepareApplication)
+    participant DBService as @jobpilot/database (prepareApplication)
+    participant RPC as prepare_application (PostgreSQL Stored Function)
+    participant DB as PostgreSQL Tables (preparations, answers, applications)
+
+    Adapter->>UseCase: executePrepareApplication(context, input)
+    Note over UseCase: 1. Validate input schema with Zod<br/>2. Verify authenticated session<br/>3. Assign client idempotency_key if omitted
+    UseCase->>DBService: prepareApplication(supabase, validatedInput)
+    DBService->>RPC: RPC prepare_application(params...)
+
+    Note over RPC: 1. Verify auth.uid()<br/>2. Check existing idempotency_key
+    alt Idempotency Key Exists
+        alt Payload Hash Matches
+            RPC-->>DBService: Return existing Application (Idempotent 200 OK)
+            DBService-->>UseCase: Return Application
+            UseCase-->>Adapter: Return Application
+        else Payload Hash Mismatch
+            RPC-->>DBService: Raise Exception P0003 (Conflict 409)
+            DBService-->>UseCase: Throw ConflictError
+        end
+        Note over RPC: 3. Lock jobs & documents FOR SHARE<br/>4. Lock or create application FOR UPDATE<br/>5. Validate strictly pre-submission status (SAVED / INTERESTED)<br/>6. Calculate sequential preparation_number<br/>7. Insert immutable application_preparations record<br/>8. Bulk insert application_answers snapshots<br/>9. Update applications.latest_preparation_id pointer
+        RPC->>DB: Atomically commit all records
+        DB-->>RPC: Return updated Application
+        RPC-->>DBService: Return Application
+        DBService-->>UseCase: Return Application
+        UseCase-->>Adapter: Return Application
+    end
 ```
 
-```
+> **Pre-Submission Invariant**: Application preparation is strictly allowed only while status is `SAVED` or `INTERESTED`. Attempting preparation on `APPLIED`, `ASSESSMENT`, `INTERVIEW`, `OFFER`, `REJECTED`, `WITHDRAWN`, or archived applications is immediately rejected (`APPLICATION_STATUS_NOT_PREPARABLE` / `APPLICATION_IS_ARCHIVED`). No `PREPARED`, `READY`, or `DRAFT` status exists.

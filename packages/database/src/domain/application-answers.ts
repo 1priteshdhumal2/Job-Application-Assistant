@@ -24,7 +24,7 @@ const ANSWER_ALLOWED_STATUSES = [
 ] as const;
 
 /**
- * Lists all submitted answer snapshots for a given application.
+ * Lists all submitted answer snapshots for a given application ID.
  */
 export async function listApplicationAnswers(
   supabase: SupabaseClient,
@@ -32,7 +32,7 @@ export async function listApplicationAnswers(
 ): Promise<ApplicationAnswer[]> {
   const user = await requireAuthUser(supabase);
 
-  // Verify application ownership and active status
+  // Verify application ownership
   const { data: app, error: appError } = await supabase
     .from("applications")
     .select("id")
@@ -63,6 +63,50 @@ export async function listApplicationAnswers(
 }
 
 /**
+ * Lists all submitted answer snapshots for a specific preparation snapshot ID.
+ */
+export async function listApplicationAnswersByPreparation(
+  supabase: SupabaseClient,
+  preparationId: string,
+): Promise<ApplicationAnswer[]> {
+  const user = await requireAuthUser(supabase);
+
+  // Verify preparation ownership
+  const { data: prep, error: prepError } = await supabase
+    .from("application_preparations")
+    .select("id")
+    .eq("id", preparationId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (prepError) {
+    throw handleDatabaseError(
+      prepError,
+      "listApplicationAnswersByPreparation:verifyPrep",
+    );
+  }
+
+  if (!prep) {
+    throw new NotFoundError(
+      "Application preparation not found or belongs to another user",
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("application_answers")
+    .select("*")
+    .eq("preparation_id", preparationId)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw handleDatabaseError(error, "listApplicationAnswersByPreparation");
+  }
+
+  return (data || []) as ApplicationAnswer[];
+}
+
+/**
  * Fetches a single application answer snapshot by ID.
  */
 export async function getApplicationAnswer(
@@ -86,8 +130,7 @@ export async function getApplicationAnswer(
 }
 
 /**
- * Creates an immutable point-in-time application answer snapshot.
- * Verifies that the parent application is active and not in a terminal state.
+ * Creates an immutable point-in-time application answer snapshot attached to a preparation.
  * Strictly does NOT permit updating or deleting existing answers.
  */
 export async function createApplicationAnswer(
@@ -97,39 +140,35 @@ export async function createApplicationAnswer(
   const user = await requireAuthUser(supabase);
   const validated = applicationAnswerSchema.parse(input);
 
-  // 1. Verify parent application existence, ownership, and non-deleted state
-  const { data: app, error: appError } = await supabase
-    .from("applications")
-    .select("id, status, deleted_at")
-    .eq("id", validated.application_id)
+  // Verify parent preparation existence and ownership
+  const { data: prep, error: prepError } = await supabase
+    .from("application_preparations")
+    .select("id, status")
+    .eq("id", validated.preparation_id)
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (appError) {
-    throw handleDatabaseError(appError, "createApplicationAnswer:verifyApp");
+  if (prepError) {
+    throw handleDatabaseError(prepError, "createApplicationAnswer:verifyPrep");
   }
 
-  if (!app) {
-    throw new NotFoundError("Application not found or belongs to another user");
-  }
-
-  if (app.deleted_at !== null) {
-    throw new ValidationError(
-      "Cannot add answers to a soft-deleted application",
+  if (!prep) {
+    throw new NotFoundError(
+      "Application preparation not found or belongs to another user",
     );
   }
 
   if (
     !ANSWER_ALLOWED_STATUSES.includes(
-      app.status as (typeof ANSWER_ALLOWED_STATUSES)[number],
+      prep.status as (typeof ANSWER_ALLOWED_STATUSES)[number],
     )
   ) {
     throw new ValidationError(
-      `Cannot add answers to an application in '${app.status}' state`,
+      `Cannot add answers to a preparation in '${prep.status}' state`,
     );
   }
 
-  // 2. Insert immutable snapshot
+  // Insert immutable snapshot
   const { data, error } = await supabase
     .from("application_answers")
     .insert({

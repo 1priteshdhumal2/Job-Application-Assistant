@@ -52,7 +52,8 @@ export const ANSWER_SOURCE_TYPES: AnswerSourceType[] = [
 export interface ApplicationAnswer {
   id: string;
   user_id: string;
-  application_id: string;
+  preparation_id: string;
+  application_id: string | null;
   concept_key: string | null;
   question_text: string;
   answer_value: string | null;
@@ -70,3 +71,12 @@ export type ApplicationAnswerCreateInput = Omit<
 >;
 export type ApplicationAnswerUpdateInput =
   Partial<ApplicationAnswerCreateInput>;
+
+export interface ApplicationAnswerInput {
+  concept_key?: string | null;
+  question_text: string;
+  answer_value?: string | null;
+  answer_type?: AnswerType;
+  source_type?: AnswerSourceType;
+  requires_review?: boolean;
+}

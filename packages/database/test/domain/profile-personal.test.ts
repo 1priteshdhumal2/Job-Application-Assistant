@@ -82,6 +82,7 @@ describe("Profile Personal Service (Unit)", () => {
         user_id: mockUser.id,
         first_name: "Alice",
       }),
+      { onConflict: "user_id" },
     );
   });
 });

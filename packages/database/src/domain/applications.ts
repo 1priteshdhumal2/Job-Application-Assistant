@@ -1,5 +1,5 @@
 // ==============================================================================
-// Applications Domain Service (State Machine, Soft-Delete & Tenant Isolation)
+// Applications Domain Service (State Machine, Soft-Delete, Preparations & Tenant Isolation)
 // ==============================================================================
 
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -8,6 +8,8 @@ import {
   ApplicationCreateInput,
   ApplicationUpdateInput,
   ApplicationStatus,
+  ApplicationPreparation,
+  PrepareApplicationInput,
   PaginationParams,
   PaginatedResult,
   SortParams,
@@ -15,6 +17,7 @@ import {
 import {
   applicationSchema,
   applicationUpdateSchema,
+  prepareApplicationSchema,
 } from "@jobpilot/validation";
 import { requireAuthUser } from "../common/auth.js";
 import {
@@ -245,6 +248,84 @@ export async function transitionApplicationStatus(
   }
 
   return data as Application;
+}
+
+/**
+ * Prepares an application draft atomically via PostgreSQL stored function.
+ * Handles job verification, active document locks, preparation numbering,
+ * bulk answer snapshot insertion, idempotency enforcement, and latest pointer updates.
+ */
+export async function prepareApplication(
+  supabase: SupabaseClient,
+  input: PrepareApplicationInput,
+): Promise<Application> {
+  await requireAuthUser(supabase);
+  const validated = prepareApplicationSchema.parse(input);
+
+  const { data, error } = await supabase.rpc("prepare_application", {
+    p_application_id: validated.application_id || null,
+    p_job_id: validated.job_id || null,
+    p_resume_document_id: validated.resume_document_id || null,
+    p_cover_letter_document_id: validated.cover_letter_document_id || null,
+    p_notes: validated.notes || null,
+    p_status: validated.status || null,
+    p_idempotency_key: validated.idempotency_key || crypto.randomUUID(),
+    p_answers: validated.answers || [],
+  });
+
+  if (error || !data) {
+    throw handleDatabaseError(error, "prepareApplication");
+  }
+
+  return data as Application;
+}
+
+/**
+ * Lists all historical preparation snapshots for a given application.
+ */
+export async function listApplicationPreparations(
+  supabase: SupabaseClient,
+  applicationId: string,
+): Promise<ApplicationPreparation[]> {
+  const user = await requireAuthUser(supabase);
+
+  const { data, error } = await supabase
+    .from("application_preparations")
+    .select("*")
+    .or(
+      `application_id.eq.${applicationId},original_application_id.eq.${applicationId}`,
+    )
+    .eq("user_id", user.id)
+    .order("preparation_number", { ascending: true });
+
+  if (error) {
+    throw handleDatabaseError(error, "listApplicationPreparations");
+  }
+
+  return (data || []) as ApplicationPreparation[];
+}
+
+/**
+ * Fetches a single application preparation snapshot by ID.
+ */
+export async function getApplicationPreparation(
+  supabase: SupabaseClient,
+  preparationId: string,
+): Promise<ApplicationPreparation> {
+  const user = await requireAuthUser(supabase);
+
+  const { data, error } = await supabase
+    .from("application_preparations")
+    .select("*")
+    .eq("id", preparationId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (error || !data) {
+    throw handleDatabaseError(error, "getApplicationPreparation");
+  }
+
+  return data as ApplicationPreparation;
 }
 
 /**

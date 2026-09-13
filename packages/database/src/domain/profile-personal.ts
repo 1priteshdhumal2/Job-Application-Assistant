@@ -41,10 +41,13 @@ export async function upsertPersonalProfile(
 
   const { data, error } = await supabase
     .from("profile_personal")
-    .upsert({
-      user_id: user.id,
-      ...validated,
-    })
+    .upsert(
+      {
+        user_id: user.id,
+        ...validated,
+      },
+      { onConflict: "user_id" },
+    )
     .select()
     .single();
 
