@@ -39,6 +39,7 @@ export const DOCUMENT_SORT_FIELDS = [
 export type DocumentSortField = (typeof DOCUMENT_SORT_FIELDS)[number];
 
 export interface DocumentListFilters {
+  name?: string;
   document_type?: DocumentType;
   category?: UserDocumentCategory;
   is_active?: boolean;
@@ -87,6 +88,11 @@ export async function listDocuments(
     query = query.eq("is_active", true);
   }
 
+  if (filters?.name) {
+    // Sanitize wildcard search characters
+    const sanitized = filters.name.replace(/[%_]/g, "\\$&");
+    query = query.ilike("name", `%${sanitized}%`);
+  }
   if (filters?.document_type) {
     query = query.eq("document_type", filters.document_type);
   }

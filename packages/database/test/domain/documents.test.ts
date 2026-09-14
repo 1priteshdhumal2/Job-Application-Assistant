@@ -35,6 +35,44 @@ describe("Documents Service (Unit)", () => {
     expect(eqActive).toHaveBeenCalledWith("is_active", true);
   });
 
+  it("applies sanitized name search with escaped wildcards and combines with filters", async () => {
+    const mockDocs = [
+      { id: "doc-1", name: "Resume_100%_Final.pdf", is_active: true },
+    ];
+
+    const range = vi
+      .fn()
+      .mockResolvedValue({ data: mockDocs, count: 1, error: null });
+    const order = vi.fn().mockReturnValue({ range });
+    const eqCategory = vi.fn().mockReturnValue({ order });
+    const eqType = vi.fn().mockReturnValue({ eq: eqCategory });
+    const ilikeName = vi.fn().mockReturnValue({ eq: eqType });
+    const eqActive = vi.fn().mockReturnValue({ ilike: ilikeName });
+    const eqUser = vi.fn().mockReturnValue({ eq: eqActive });
+    const select = vi.fn().mockReturnValue({ eq: eqUser });
+    const from = vi.fn().mockReturnValue({ select });
+
+    const supabase = {
+      auth: {
+        getUser: vi
+          .fn()
+          .mockResolvedValue({ data: { user: mockUser }, error: null }),
+      },
+      from,
+    } as unknown as SupabaseClient;
+
+    const result = await listDocuments(supabase, {
+      name: "100%_Final",
+      document_type: "RESUME",
+      category: "resumes",
+    });
+
+    expect(result.data).toEqual(mockDocs);
+    expect(ilikeName).toHaveBeenCalledWith("name", "%100\\%\\_Final%");
+    expect(eqType).toHaveBeenCalledWith("document_type", "RESUME");
+    expect(eqCategory).toHaveBeenCalledWith("category", "resumes");
+  });
+
   it("executes compensation deleting storage binary if metadata insert fails", async () => {
     const removeStorage = vi.fn().mockResolvedValue({ data: [], error: null });
     const uploadStorage = vi

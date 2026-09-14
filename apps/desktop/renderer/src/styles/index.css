@@ -174,6 +174,18 @@ body {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.badge-primary {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-info {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
 .badge-warning {
   background: rgba(245, 158, 11, 0.15);
   color: var(--accent-amber);
@@ -184,6 +196,12 @@ body {
   background: rgba(239, 68, 68, 0.15);
   color: var(--accent-red);
   border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-neutral {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid rgba(148, 163, 184, 0.3);
 }
 
 .code-box {
@@ -900,4 +918,193 @@ body {
   line-height: 1.6;
   font-size: 0.95rem;
   color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Documents List & Detail Styles (Phase 2D-2C-2)
+   ========================================================================== */
+
+.documents-filter-toolbar {
+  padding: 1.25rem;
+  gap: 1rem;
+}
+
+.documents-filter-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .documents-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.documents-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.documents-table-container {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.documents-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.documents-table th {
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.documents-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.documents-table-row:last-child td {
+  border-bottom: none;
+}
+
+.documents-table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.document-name-cell {
+  max-width: 260px;
+}
+
+.document-name-text {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.document-category-label {
+  color: var(--text-secondary);
+  text-transform: capitalize;
+  font-size: 0.85rem;
+}
+
+.document-version-pill {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.document-size-cell {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.document-date-cell {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.documents-table-action-header {
+  text-align: right;
+}
+
+.documents-table-action-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.documents-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  margin-top: 0.5rem;
+}
+
+.documents-pagination-info {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Document Detail */
+.document-detail-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.document-metadata-card {
+  padding: 1.75rem;
+  gap: 1.5rem;
+}
+
+.document-metadata-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.document-metadata-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.document-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+}
+
+.metadata-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.metadata-value {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.code-font {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
 }

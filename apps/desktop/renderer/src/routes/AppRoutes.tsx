@@ -15,6 +15,7 @@ import { ApplicationsPage } from "../pages/applications/ApplicationsPage";
 import { ApplicationDetailPage } from "../pages/applications/ApplicationDetailPage";
 import { PreparationPage } from "../pages/applications/PreparationPage";
 import { DocumentsPage } from "../pages/documents/DocumentsPage";
+import { DocumentDetailPage } from "../pages/documents/DocumentDetailPage";
 import { ProfilePage } from "../pages/profile/ProfilePage";
 import { SettingsPage } from "../pages/settings/SettingsPage";
 import { DiagnosticsPage } from "../pages/diagnostics/DiagnosticsPage";
@@ -58,6 +59,10 @@ export function AppRoutes(): React.ReactElement {
             element={<PreparationPage />}
           />
           <Route path="documents" element={<DocumentsPage />} />
+          <Route
+            path="documents/:documentId"
+            element={<DocumentDetailPage />}
+          />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="diagnostics" element={<DiagnosticsPage />} />
