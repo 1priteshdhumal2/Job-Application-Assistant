@@ -1,12 +1,31 @@
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import { app, BrowserWindow, ipcMain, session, dialog } from "electron";
+import fs from "fs";
 import path from "path";
 import { APP_VERSION, IPC_CHANNELS, createLogger } from "@jobpilot/shared";
-import { DesktopEnvironmentInfo } from "@jobpilot/types";
+import {
+  DesktopEnvironmentInfo,
+  SelectDocumentFileResult,
+  SaveDocumentFileParams,
+  SaveDocumentFileResult,
+} from "@jobpilot/types";
 
 const logger = createLogger("electron-main");
 let mainWindow: BrowserWindow | null = null;
 
 const isDev = process.env["NODE_ENV"] === "development" || !app.isPackaged;
+
+function getMimeTypeFromExt(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case ".pdf":
+      return "application/pdf";
+    case ".docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    case ".xlsx":
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    default:
+      return "application/octet-stream";
+  }
+}
 
 function setupContentSecurityPolicy(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -38,11 +57,12 @@ function setupContentSecurityPolicy(): void {
 }
 
 function registerIpcHandlers(): void {
-  // Explicitly register allowed IPC methods only
+  // 1. App Version metadata
   ipcMain.handle(IPC_CHANNELS.GET_APP_VERSION, (): string => {
     return APP_VERSION;
   });
 
+  // 2. Environment Info metadata
   ipcMain.handle(
     IPC_CHANNELS.GET_ENVIRONMENT_INFO,
     (): DesktopEnvironmentInfo => {
@@ -54,6 +74,111 @@ function registerIpcHandlers(): void {
         nodeVersion: process.versions.node,
         isPackaged: app.isPackaged,
       };
+    },
+  );
+
+  // 3. Document File Selection Dialog
+  ipcMain.handle(
+    IPC_CHANNELS.SELECT_DOCUMENT_FILE,
+    async (): Promise<SelectDocumentFileResult> => {
+      if (!mainWindow) {
+        return { canceled: true };
+      }
+
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: "Select Document",
+        properties: ["openFile"],
+        filters: [
+          {
+            name: "Supported Documents (*.pdf, *.docx, *.xlsx)",
+            extensions: ["pdf", "docx", "xlsx"],
+          },
+        ],
+      });
+
+      if (
+        result.canceled ||
+        !result.filePaths ||
+        result.filePaths.length === 0
+      ) {
+        return { canceled: true };
+      }
+
+      const selectedPath = result.filePaths[0];
+      if (!selectedPath) {
+        return { canceled: true };
+      }
+
+      try {
+        const buffer = await fs.promises.readFile(selectedPath);
+        const fileName = path.basename(selectedPath);
+        const ext = path.extname(selectedPath);
+        const mimeType = getMimeTypeFromExt(ext);
+
+        return {
+          canceled: false,
+          file: {
+            fileData: new Uint8Array(buffer),
+            fileName,
+            mimeType,
+            fileSize: buffer.length,
+          },
+        };
+      } catch (err) {
+        logger.error(`Failed to read selected document file: ${err}`);
+        return { canceled: true };
+      }
+    },
+  );
+
+  // 4. Document File Save Dialog
+  ipcMain.handle(
+    IPC_CHANNELS.SAVE_DOCUMENT_FILE,
+    async (
+      _event,
+      params: SaveDocumentFileParams,
+    ): Promise<SaveDocumentFileResult> => {
+      if (!mainWindow) {
+        return { canceled: true, success: false };
+      }
+
+      const defaultFileName = params?.defaultFileName || "document.pdf";
+      const ext = path.extname(defaultFileName).replace(/^\./, "") || "pdf";
+
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: "Save Document",
+        defaultPath: defaultFileName,
+        filters: [
+          {
+            name: "Document File",
+            extensions: [ext],
+          },
+        ],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return { canceled: true, success: false };
+      }
+
+      try {
+        const buffer = Buffer.from(params.fileData);
+        await fs.promises.writeFile(result.filePath, buffer);
+
+        return {
+          canceled: false,
+          success: true,
+          filePath: result.filePath,
+        };
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to write file to disk";
+        logger.error(`Failed to save document file: ${message}`);
+        return {
+          canceled: false,
+          success: false,
+          error: message,
+        };
+      }
     },
   );
 }

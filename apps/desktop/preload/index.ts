@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "@jobpilot/shared";
-import { DesktopEnvironmentInfo, JobPilotElectronAPI } from "@jobpilot/types";
+import {
+  DesktopEnvironmentInfo,
+  JobPilotElectronAPI,
+  SelectDocumentFileResult,
+  SaveDocumentFileParams,
+  SaveDocumentFileResult,
+} from "@jobpilot/types";
 
 /**
  * Minimal Typed Preload API Bridge
@@ -16,6 +22,14 @@ const api: JobPilotElectronAPI = {
   },
   getEnvironmentInfo: async (): Promise<DesktopEnvironmentInfo> => {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_ENVIRONMENT_INFO);
+  },
+  selectDocumentFile: async (): Promise<SelectDocumentFileResult> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SELECT_DOCUMENT_FILE);
+  },
+  saveDocumentFile: async (
+    params: SaveDocumentFileParams,
+  ): Promise<SaveDocumentFileResult> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_DOCUMENT_FILE, params);
   },
 };
 
