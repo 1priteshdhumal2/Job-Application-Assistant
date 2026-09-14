@@ -27,6 +27,10 @@ export default defineConfig({
         __dirname,
         "./packages/database/src/index.ts",
       ),
+      "@jobpilot/use-cases": path.resolve(
+        __dirname,
+        "./packages/use-cases/src/index.ts",
+      ),
     },
     coverage: {
       provider: "v8",

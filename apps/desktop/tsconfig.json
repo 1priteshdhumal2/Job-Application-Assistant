@@ -19,6 +19,7 @@
     { "path": "../../packages/types" },
     { "path": "../../packages/shared" },
     { "path": "../../packages/validation" },
-    { "path": "../../packages/database" }
+    { "path": "../../packages/database" },
+    { "path": "../../packages/use-cases" }
   ]
 }
