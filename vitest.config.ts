@@ -6,9 +6,9 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: [
-      "packages/**/*.test.ts",
-      "services/**/*.test.ts",
-      "apps/**/*.test.ts",
+      "packages/**/*.test.{ts,tsx}",
+      "services/**/*.test.{ts,tsx}",
+      "apps/**/*.test.{ts,tsx}",
     ],
     alias: {
       "@jobpilot/types": path.resolve(
