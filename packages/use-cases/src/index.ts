@@ -9,3 +9,8 @@ export * from "./applications/archive-application.use-case.js";
 export * from "./applications/restore-application.use-case.js";
 export * from "./documents/upload-user-document.use-case.js";
 export * from "./documents/replace-document-version.use-case.js";
+export * from "./jobs/list-jobs.use-case.js";
+export * from "./jobs/get-job.use-case.js";
+export * from "./jobs/create-job.use-case.js";
+export * from "./jobs/update-job.use-case.js";
+export * from "./jobs/delete-job.use-case.js";
