@@ -6,7 +6,9 @@ describe("Desktop Navigation & Route Structure Invariants", () => {
       login: "/login",
       appRoot: "/app",
       jobs: "/app/jobs",
+      createJob: "/app/jobs/new",
       jobDetail: "/app/jobs/:jobId",
+      editJob: "/app/jobs/:jobId/edit",
       applications: "/app/applications",
       applicationDetail: "/app/applications/:applicationId",
       preparation: "/app/applications/:applicationId/prepare",
@@ -19,7 +21,9 @@ describe("Desktop Navigation & Route Structure Invariants", () => {
     expect(expectedRoutes.login).toBe("/login");
     expect(expectedRoutes.appRoot).toBe("/app");
     expect(expectedRoutes.jobs).toBe("/app/jobs");
+    expect(expectedRoutes.createJob).toBe("/app/jobs/new");
     expect(expectedRoutes.jobDetail).toBe("/app/jobs/:jobId");
+    expect(expectedRoutes.editJob).toBe("/app/jobs/:jobId/edit");
     expect(expectedRoutes.applications).toBe("/app/applications");
     expect(expectedRoutes.applicationDetail).toBe(
       "/app/applications/:applicationId",
@@ -40,7 +44,9 @@ describe("Desktop Navigation & Route Structure Invariants", () => {
     const testRoutes = [
       "/app",
       "/app/jobs",
+      "/app/jobs/new",
       "/app/jobs/123",
+      "/app/jobs/123/edit",
       "/app/applications",
       "/app/applications/456",
       "/app/applications/456/prepare",
@@ -54,5 +60,15 @@ describe("Desktop Navigation & Route Structure Invariants", () => {
       expect(route.startsWith(protectedPrefix)).toBe(true);
       expect(publicPaths.includes(route)).toBe(false);
     });
+  });
+
+  it("distinguishes create route /app/jobs/new from parametric detail route /app/jobs/:jobId", () => {
+    const createPath = "/app/jobs/new";
+    const detailPattern = /^\/app\/jobs\/(?!new$)[^/]+$/;
+    const editPattern = /^\/app\/jobs\/(?!new\/edit$)[^/]+\/edit$/;
+
+    expect(detailPattern.test(createPath)).toBe(false);
+    expect(detailPattern.test("/app/jobs/job-123")).toBe(true);
+    expect(editPattern.test("/app/jobs/job-123/edit")).toBe(true);
   });
 });

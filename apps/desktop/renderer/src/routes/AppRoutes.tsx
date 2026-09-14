@@ -8,7 +8,9 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { JobsPage } from "../pages/jobs/JobsPage";
+import { CreateJobPage } from "../pages/jobs/CreateJobPage";
 import { JobDetailPage } from "../pages/jobs/JobDetailPage";
+import { EditJobPage } from "../pages/jobs/EditJobPage";
 import { ApplicationsPage } from "../pages/applications/ApplicationsPage";
 import { ApplicationDetailPage } from "../pages/applications/ApplicationDetailPage";
 import { PreparationPage } from "../pages/applications/PreparationPage";
@@ -43,7 +45,9 @@ export function AppRoutes(): React.ReactElement {
         <Route path="/app" element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="jobs" element={<JobsPage />} />
+          <Route path="jobs/new" element={<CreateJobPage />} />
           <Route path="jobs/:jobId" element={<JobDetailPage />} />
+          <Route path="jobs/:jobId/edit" element={<EditJobPage />} />
           <Route path="applications" element={<ApplicationsPage />} />
           <Route
             path="applications/:applicationId"
