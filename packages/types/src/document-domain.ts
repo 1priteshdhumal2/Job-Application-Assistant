@@ -25,6 +25,7 @@ export interface DocumentRecord {
   storage_path: string;
   mime_type: string;
   file_size: number;
+  content_hash?: string | null;
   version: number;
   is_active: boolean;
   created_at: string;
@@ -39,6 +40,7 @@ export type DocumentCreateInput = {
   storage_path: string;
   mime_type: string;
   file_size: number;
+  content_hash?: string | null;
   version?: number;
   is_active?: boolean;
 };

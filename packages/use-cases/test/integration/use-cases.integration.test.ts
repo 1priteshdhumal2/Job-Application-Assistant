@@ -34,17 +34,23 @@ describe("Use-Cases Package Remote Supabase Integration & Concurrency Suite", ()
   let contextB: UseCaseContext;
 
   const ensureAuth = async () => {
-    const { error: errA } = await clientA.auth.signInWithPassword({
-      email: TEST_USER_A_EMAIL,
-      password: TEST_PASSWORD,
-    });
-    if (errA) throw new Error(`User A login failed: ${errA.message}`);
+    const { data: sessionA } = await clientA.auth.getSession();
+    if (!sessionA?.session) {
+      const { error: errA } = await clientA.auth.signInWithPassword({
+        email: TEST_USER_A_EMAIL,
+        password: TEST_PASSWORD,
+      });
+      if (errA) throw new Error(`User A login failed: ${errA.message}`);
+    }
 
-    const { error: errB } = await clientB.auth.signInWithPassword({
-      email: TEST_USER_B_EMAIL,
-      password: TEST_PASSWORD,
-    });
-    if (errB) throw new Error(`User B login failed: ${errB.message}`);
+    const { data: sessionB } = await clientB.auth.getSession();
+    if (!sessionB?.session) {
+      const { error: errB } = await clientB.auth.signInWithPassword({
+        email: TEST_USER_B_EMAIL,
+        password: TEST_PASSWORD,
+      });
+      if (errB) throw new Error(`User B login failed: ${errB.message}`);
+    }
 
     contextA = { supabase: clientA };
     contextB = { supabase: clientB };
@@ -61,7 +67,10 @@ describe("Use-Cases Package Remote Supabase Integration & Concurrency Suite", ()
   });
 
   it("1. Orchestrates Document Upload & Version Replacement Use Cases", async () => {
-    const file1 = new Blob(["Use Case Resume v1"], { type: "application/pdf" });
+    const file1 = new Blob(
+      [`Use Case Resume v1 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const doc1 = await executeUploadUserDocument(contextA, {
       file: file1,
       fileName: "uc_resume_v1.pdf",
@@ -72,7 +81,10 @@ describe("Use-Cases Package Remote Supabase Integration & Concurrency Suite", ()
     expect(doc1.id).toBeDefined();
     expect(doc1.version).toBe(1);
 
-    const file2 = new Blob(["Use Case Resume v2"], { type: "application/pdf" });
+    const file2 = new Blob(
+      [`Use Case Resume v2 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const doc2 = await executeReplaceDocumentVersion(
       contextA,
       doc1.document_group_id,
@@ -92,7 +104,10 @@ describe("Use-Cases Package Remote Supabase Integration & Concurrency Suite", ()
       job_title: "Staff Platform Engineer",
     });
 
-    const file = new Blob(["Resume for Fintech"], { type: "application/pdf" });
+    const file = new Blob(
+      [`Resume for Fintech ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const resume = await executeUploadUserDocument(contextA, {
       file,
       fileName: "fintech_resume.pdf",
@@ -206,7 +221,9 @@ describe("Use-Cases Package Remote Supabase Integration & Concurrency Suite", ()
     });
 
     // Upload a CERTIFICATE (category 'certificates')
-    const certBlob = new Blob(["Cert"], { type: "application/pdf" });
+    const certBlob = new Blob([`Cert ${Date.now()}_${crypto.randomUUID()}`], {
+      type: "application/pdf",
+    });
     const certDoc = await uploadDocument(clientA, {
       file: certBlob,
       fileName: "cert.pdf",

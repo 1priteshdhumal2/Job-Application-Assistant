@@ -171,3 +171,31 @@ export function validateFileForUpload(file: {
     sanitizedName: sanitized,
   };
 }
+
+/**
+ * Calculates a SHA-256 hex hash (64 lowercase hex characters) from binary data or string.
+ */
+export async function calculateContentHash(
+  data: ArrayBuffer | Uint8Array | Blob | string,
+): Promise<string> {
+  let uint8: Uint8Array;
+  if (typeof data === "string") {
+    uint8 = new TextEncoder().encode(data);
+  } else if (typeof Blob !== "undefined" && data instanceof Blob) {
+    const arrayBuffer = await data.arrayBuffer();
+    uint8 = new Uint8Array(arrayBuffer);
+  } else if (data instanceof Uint8Array) {
+    uint8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  } else if (data instanceof ArrayBuffer) {
+    uint8 = new Uint8Array(data);
+  } else {
+    throw new Error("Unsupported data format for SHA-256 hash computation");
+  }
+
+  const hashBuffer = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    uint8 as unknown as BufferSource,
+  );
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}

@@ -250,3 +250,50 @@ sequenceDiagram
 ```
 
 > **Pre-Submission Invariant**: Application preparation is strictly allowed only while status is `SAVED` or `INTERESTED`. Attempting preparation on `APPLIED`, `ASSESSMENT`, `INTERVIEW`, `OFFER`, `REJECTED`, `WITHDRAWN`, or archived applications is immediately rejected (`APPLICATION_STATUS_NOT_PREPARABLE` / `APPLICATION_IS_ARCHIVED`). No `PREPARED`, `READY`, or `DRAFT` status exists.
+
+---
+
+## 8. Document Content Hashing & Duplicate Detection Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Service as @jobpilot/database (uploadDocument / replaceDocumentVersion)
+    participant Validation as @jobpilot/validation (calculateContentHash)
+    participant DB as PostgreSQL (public.documents)
+    participant Storage as Supabase Storage (user-documents)
+
+    User->>Service: Upload Document (file, fileName, category, documentType)
+    Service->>Validation: validateFileForUpload(file)
+    Note over Service: 1. Validate file extension, size, and MIME type
+    Service->>Validation: calculateContentHash(file)
+    Validation-->>Service: Return 64-char SHA-256 Hex Hash
+
+    Service->>DB: findDocumentByContentHash(user_id, content_hash)
+    alt Content Hash Exists in User's Library
+        DB-->>Service: Return Existing DocumentRecord
+        Service-->>User: Throw ConflictError("A document with identical content already exists in your library")
+        Note over Service: Storage upload aborted (zero wasted bandwidth/storage)
+    else Unique Content
+        DB-->>Service: Return null
+        Service->>Storage: upload(storagePath, binary)
+        alt Storage Upload Fails
+            Storage-->>Service: StorageError
+            Service-->>User: Throw StorageError
+        else Storage Upload Succeeds
+            Service->>DB: INSERT into documents (with content_hash) / RPC create_document_version
+            alt DB Insert / RPC Fails (e.g. concurrent race)
+                DB-->>Service: Error / Constraint Violation
+                Note over Service: Storage Compensation Triggered
+                Service->>Storage: remove([storagePath])
+                Service-->>User: Map to ConflictError / DatabaseError
+            else DB Insert / RPC Succeeds
+                DB-->>Service: Return DocumentRecord
+                Service-->>User: Return DocumentRecord (Version 1 / Version N+1)
+            end
+        end
+    end
+```
+
+> **MVP Migration State & Duplicate Identity Invariant**: Duplicate identity is strictly defined as `(user_id, content_hash)` where `content_hash` is the SHA-256 hash of the exact stored binary bytes. For the fast-tracked MVP, legacy documents created prior to Phase 2D-2C-3A may have `content_hash = NULL` until a future administrative backfill is executed. All subsequent uploads and version replacements calculate and enforce SHA-256 hashes unconditionally. Multi-tenant uploads of identical content by different users are fully isolated and permitted.

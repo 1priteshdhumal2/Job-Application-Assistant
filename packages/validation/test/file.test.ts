@@ -4,6 +4,7 @@ import {
   sanitizeFileName,
   generateStoragePath,
   validateStoragePath,
+  calculateContentHash,
   MAX_FILE_SIZE_BYTES,
 } from "../src/file.js";
 
@@ -150,6 +151,50 @@ describe("File Validation and Path Sanitization", () => {
     it("rejects path with unrecognized category", () => {
       const path = `${validUserId}/unknown-category/resume.pdf`;
       expect(validateStoragePath(path, validUserId)).toBe(false);
+    });
+  });
+
+  describe("calculateContentHash", () => {
+    it("calculates known SHA-256 hex hash for string input", async () => {
+      const hash = await calculateContentHash("hello world");
+      expect(hash).toBe(
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      );
+      expect(hash).toHaveLength(64);
+    });
+
+    it("calculates correct hash for Blob input", async () => {
+      const blob = new Blob(["hello world"], { type: "text/plain" });
+      const hash = await calculateContentHash(blob);
+      expect(hash).toBe(
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      );
+    });
+
+    it("calculates correct hash for Uint8Array and ArrayBuffer input", async () => {
+      const encoded = new TextEncoder().encode("hello world");
+      const hashUint8 = await calculateContentHash(encoded);
+      const hashBuffer = await calculateContentHash(encoded.buffer);
+
+      expect(hashUint8).toBe(
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      );
+      expect(hashBuffer).toBe(
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      );
+    });
+
+    it("produces identical hashes for identical content regardless of input type", async () => {
+      const text = "PDF Binary Content Simulation 12345";
+      const hashText = await calculateContentHash(text);
+      const hashBlob = await calculateContentHash(new Blob([text]));
+      expect(hashText).toBe(hashBlob);
+    });
+
+    it("produces different hashes for different content", async () => {
+      const hash1 = await calculateContentHash("Resume Version 1");
+      const hash2 = await calculateContentHash("Resume Version 2");
+      expect(hash1).not.toBe(hash2);
     });
   });
 });

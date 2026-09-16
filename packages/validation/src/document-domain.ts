@@ -28,6 +28,11 @@ export const documentSchema = z.object({
     .int()
     .min(1, "File size must be greater than 0")
     .max(26214400, "File size cannot exceed 25MB"),
+  content_hash: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "Invalid SHA-256 content hash")
+    .optional()
+    .nullable(),
   version: z.number().int().min(1, "Version must be at least 1").default(1),
   is_active: z.boolean().default(true),
 });

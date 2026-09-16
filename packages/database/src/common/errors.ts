@@ -54,6 +54,17 @@ export function handleDatabaseError(
 
     switch (pgError.code) {
       case "23505": // Unique violation
+        if (
+          pgError.message?.includes("uq_documents_user_content_hash") ||
+          pgError.details?.includes("uq_documents_user_content_hash") ||
+          pgError.message?.includes("content_hash") ||
+          pgError.details?.includes("content_hash")
+        ) {
+          return new ConflictError(
+            "A document with identical content already exists in your library",
+            pgError,
+          );
+        }
         return new ConflictError(
           `Record conflict in ${context}: ${pgError.details || pgError.message}`,
           pgError,

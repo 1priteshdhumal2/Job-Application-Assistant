@@ -604,3 +604,32 @@ Application workflows (e.g. preparing an application, status transitions, docume
 
 - Desktop Electron IPC and REST API services share the exact same orchestration layer with zero code duplication.
 - Clean dependency tree: Transports -> Use Cases -> Database -> Types/Validation/Shared.
+
+---
+
+## ADR 025: Document Content Hashing (SHA-256) & Per-User Duplicate Prevention
+
+### Status
+
+Accepted (Phase 2D-2C-3A)
+
+### Context
+
+Users may inadvertently or intentionally attempt to upload identical documents under different filenames, display names, categories, or document types. Performing duplicate detection solely by filename, metadata, or path is fragile and unreliable. True duplicate detection requires evaluating the cryptographic hash of the document binary content.
+
+### Decision
+
+1. Compute standard **SHA-256** hex hashes (64 lowercase hex characters) from the binary content of uploaded documents using standard Web Crypto (`crypto.subtle.digest("SHA-256", buffer)`).
+2. Authoritative duplicate uniqueness is strictly scoped **per user**:
+   `UNIQUE INDEX uq_documents_user_content_hash ON public.documents (user_id, content_hash) WHERE content_hash IS NOT NULL;`
+3. Nullability strategy: `content_hash TEXT NULL` with check constraint `chk_documents_content_hash` ensures legacy rows with `NULL` remain valid while all new and versioned documents enforce valid SHA-256 format and per-user uniqueness.
+4. Two-tier duplicate detection:
+   - **Upfront Domain Check**: `findDocumentByContentHash` queries the database before initiating storage binary upload, preventing wasted bandwidth and orphan storage objects.
+   - **Database Invariant**: Partial unique index on `(user_id, content_hash)` prevents race conditions during concurrent uploads, mapped to user-friendly `ConflictError("A document with identical content already exists in your library")`.
+5. Update `public.create_document_version` stored function to accept `p_content_hash TEXT DEFAULT NULL` and insert into version records.
+
+### Consequences
+
+- Strict prevention of duplicate content per user library across all categories, document types, and file names for all newly uploaded and versioned documents.
+- Complete tenant isolation: the same file content uploaded by different users is allowed without cross-tenant conflict or data leakage.
+- **MVP Migration State & Limitation**: For the fast-tracked MVP, legacy documents created prior to Phase 2D-2C-3A may have `content_hash = NULL`. Legacy documents with NULL content_hash are not detected as duplicates of newly uploaded files until an out-of-band administrative backfill is executed. All subsequent uploads and version replacements compute and enforce SHA-256 hashes unconditionally.

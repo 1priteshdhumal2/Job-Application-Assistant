@@ -67,4 +67,61 @@ describe("Document Domain Validation Schema", () => {
     });
     expect(invalidPath.success).toBe(false);
   });
+
+  it("validates valid SHA-256 content_hash and allows optional/null values", () => {
+    const validWithHash = documentSchema.safeParse({
+      document_type: "RESUME",
+      category: "resumes",
+      name: "Resume.pdf",
+      storage_path:
+        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/resumes/resume_2026_abc123.pdf",
+      mime_type: "application/pdf",
+      file_size: 1024,
+      content_hash:
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      version: 1,
+    });
+    expect(validWithHash.success).toBe(true);
+
+    const validWithNull = documentSchema.safeParse({
+      document_type: "RESUME",
+      category: "resumes",
+      name: "Resume.pdf",
+      storage_path:
+        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/resumes/resume_2026_abc123.pdf",
+      mime_type: "application/pdf",
+      file_size: 1024,
+      content_hash: null,
+      version: 1,
+    });
+    expect(validWithNull.success).toBe(true);
+  });
+
+  it("rejects malformed content_hash values", () => {
+    const invalidShort = documentSchema.safeParse({
+      document_type: "RESUME",
+      category: "resumes",
+      name: "Resume.pdf",
+      storage_path:
+        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/resumes/resume_2026_abc123.pdf",
+      mime_type: "application/pdf",
+      file_size: 1024,
+      content_hash: "abc123", // too short
+      version: 1,
+    });
+    expect(invalidShort.success).toBe(false);
+
+    const invalidNonHex = documentSchema.safeParse({
+      document_type: "RESUME",
+      category: "resumes",
+      name: "Resume.pdf",
+      storage_path:
+        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/resumes/resume_2026_abc123.pdf",
+      mime_type: "application/pdf",
+      file_size: 1024,
+      content_hash: "z".repeat(64), // invalid non-hex chars
+      version: 1,
+    });
+    expect(invalidNonHex.success).toBe(false);
+  });
 });

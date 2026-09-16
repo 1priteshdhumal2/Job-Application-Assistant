@@ -15,6 +15,7 @@ import {
   validateFileForUpload,
   generateStoragePath,
   validateStoragePath,
+  calculateContentHash,
 } from "@jobpilot/validation";
 import { requireAuthUser } from "../common/auth.js";
 import {
@@ -26,6 +27,7 @@ import {
   NotFoundError,
   StorageError,
   ValidationError,
+  ConflictError,
 } from "../common/errors.js";
 import { resolveSort } from "../common/sorting.js";
 import { USER_DOCUMENTS_BUCKET } from "../storage.js";
@@ -51,11 +53,13 @@ export interface UploadDocumentInput {
   fileName: string;
   category: UserDocumentCategory;
   documentType: DocumentType;
+  contentHash?: string;
 }
 
 export interface ReplaceDocumentVersionInput {
   file: File | Blob;
   fileName: string;
+  contentHash?: string;
 }
 
 /**
@@ -168,6 +172,29 @@ export async function listDocumentVersions(
 }
 
 /**
+ * Searches for an existing document with the given content hash owned by the authenticated user.
+ */
+export async function findDocumentByContentHash(
+  supabase: SupabaseClient,
+  contentHash: string,
+): Promise<DocumentRecord | null> {
+  const user = await requireAuthUser(supabase);
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("content_hash", contentHash)
+    .maybeSingle();
+
+  if (error) {
+    throw handleDatabaseError(error, "findDocumentByContentHash");
+  }
+
+  return (data as DocumentRecord) || null;
+}
+
+/**
  * Uploads a new document creating a fresh document group (Version 1, active).
  * Executes storage compensation if metadata insertion fails.
  */
@@ -188,6 +215,20 @@ export async function uploadDocument(
     throw new ValidationError(fileValidation.error || "Invalid file");
   }
 
+  // 2. Compute SHA-256 content hash and check for duplicate content in user's library
+  const contentHash =
+    input.contentHash || (await calculateContentHash(input.file));
+
+  const existingDuplicate = await findDocumentByContentHash(
+    supabase,
+    contentHash,
+  );
+  if (existingDuplicate) {
+    throw new ConflictError(
+      "A document with identical content already exists in your library",
+    );
+  }
+
   const documentGroupId = crypto.randomUUID();
   const storagePath = generateStoragePath(
     user.id,
@@ -195,7 +236,7 @@ export async function uploadDocument(
     input.fileName,
   );
 
-  // 2. Upload binary to private Supabase Storage
+  // 3. Upload binary to private Supabase Storage
   const { error: uploadError } = await supabase.storage
     .from(USER_DOCUMENTS_BUCKET)
     .upload(storagePath, input.file, {
@@ -210,7 +251,7 @@ export async function uploadDocument(
     );
   }
 
-  // 3. Insert metadata record in PostgreSQL
+  // 4. Insert metadata record in PostgreSQL
   try {
     const { data, error: dbError } = await supabase
       .from("documents")
@@ -223,6 +264,7 @@ export async function uploadDocument(
         storage_path: storagePath,
         mime_type: input.file.type,
         file_size: input.file.size,
+        content_hash: contentHash,
         version: 1,
         is_active: true,
       })
@@ -235,7 +277,7 @@ export async function uploadDocument(
 
     return data as DocumentRecord;
   } catch (err) {
-    // 4. Compensation: delete orphan uploaded binary if DB insert failed
+    // 5. Compensation: delete orphan uploaded binary if DB insert failed
     await supabase.storage
       .from(USER_DOCUMENTS_BUCKET)
       .remove([storagePath])
@@ -311,13 +353,27 @@ export async function replaceDocumentVersion(
     throw new ValidationError(fileValidation.error || "Invalid file");
   }
 
+  // 3. Compute SHA-256 content hash and check for duplicate content in user's library
+  const contentHash =
+    input.contentHash || (await calculateContentHash(input.file));
+
+  const existingDuplicate = await findDocumentByContentHash(
+    supabase,
+    contentHash,
+  );
+  if (existingDuplicate) {
+    throw new ConflictError(
+      "A document with identical content already exists in your library",
+    );
+  }
+
   const storagePath = generateStoragePath(
     user.id,
     targetCategory,
     input.fileName,
   );
 
-  // 3. Upload new binary to storage
+  // 4. Upload new binary to storage
   const { error: uploadError } = await supabase.storage
     .from(USER_DOCUMENTS_BUCKET)
     .upload(storagePath, input.file, {
@@ -332,7 +388,7 @@ export async function replaceDocumentVersion(
     );
   }
 
-  // 4. Call atomic stored function to increment version and update active state
+  // 5. Call atomic stored function to increment version and update active state
   try {
     const { data: newDoc, error: rpcError } = await supabase.rpc(
       "create_document_version",
@@ -344,6 +400,7 @@ export async function replaceDocumentVersion(
         p_file_size: input.file.size,
         p_document_type: targetType,
         p_category: targetCategory,
+        p_content_hash: contentHash,
       },
     );
 
@@ -353,7 +410,7 @@ export async function replaceDocumentVersion(
 
     return newDoc as DocumentRecord;
   } catch (err) {
-    // 5. Compensation: remove newly uploaded binary if version RPC fails
+    // 6. Compensation: remove newly uploaded binary if version RPC fails
     await supabase.storage
       .from(USER_DOCUMENTS_BUCKET)
       .remove([storagePath])

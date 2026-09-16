@@ -30,6 +30,7 @@ import {
   uploadDocument,
   replaceDocumentVersion,
   downloadDocument,
+  findDocumentByContentHash,
 } from "../../src/domain/documents.js";
 import { listPortals, getPortalByCode } from "../../src/domain/portals.js";
 import { getJob, createJob, deleteJob } from "../../src/domain/jobs.js";
@@ -61,20 +62,28 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
   let clientB: SupabaseClient;
 
   const ensureAuth = async () => {
-    const { data: authA, error: errA } = await clientA.auth.signInWithPassword({
-      email: TEST_USER_A_EMAIL,
-      password: TEST_PASSWORD,
-    });
-    if (errA || !authA.user) {
-      throw new Error(`Failed to authenticate User A: ${errA?.message}`);
+    const { data: sessionA } = await clientA.auth.getSession();
+    if (!sessionA?.session) {
+      const { data: authA, error: errA } =
+        await clientA.auth.signInWithPassword({
+          email: TEST_USER_A_EMAIL,
+          password: TEST_PASSWORD,
+        });
+      if (errA || !authA.user) {
+        throw new Error(`Failed to authenticate User A: ${errA?.message}`);
+      }
     }
 
-    const { data: authB, error: errB } = await clientB.auth.signInWithPassword({
-      email: TEST_USER_B_EMAIL,
-      password: TEST_PASSWORD,
-    });
-    if (errB || !authB.user) {
-      throw new Error(`Failed to authenticate User B: ${errB?.message}`);
+    const { data: sessionB } = await clientB.auth.getSession();
+    if (!sessionB?.session) {
+      const { data: authB, error: errB } =
+        await clientB.auth.signInWithPassword({
+          email: TEST_USER_B_EMAIL,
+          password: TEST_PASSWORD,
+        });
+      if (errB || !authB.user) {
+        throw new Error(`Failed to authenticate User B: ${errB?.message}`);
+      }
     }
   };
 
@@ -290,7 +299,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
   }, 30000);
 
   it("7. Document Logical Group Versioning, Active Constraint & Cross-Tenant Security", async () => {
-    const file1 = new Blob(["Resume Content V1"], { type: "application/pdf" });
+    const file1 = new Blob(
+      [`Resume Content V1 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const docV1 = await uploadDocument(clientA, {
       file: file1,
       fileName: "resume_v1.pdf",
@@ -303,7 +315,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     const groupId = docV1.document_group_id;
     expect(groupId).toBeDefined();
 
-    const fileB = new Blob(["Hacked Resume"], { type: "application/pdf" });
+    const fileB = new Blob(
+      [`Hacked Resume ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     await expect(
       replaceDocumentVersion(clientB, groupId, {
         file: fileB,
@@ -311,7 +326,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
       }),
     ).rejects.toThrow();
 
-    const file2 = new Blob(["Resume Content V2"], { type: "application/pdf" });
+    const file2 = new Blob(
+      [`Resume Content V2 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const docV2 = await replaceDocumentVersion(clientA, groupId, {
       file: file2,
       fileName: "resume_v2.pdf",
@@ -361,7 +379,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
 
   it("9. Phase 2C-3: Repeatable Preparation, Idempotency, Document Retention & Hard Delete History", async () => {
     // 1. Upload Resume v1 and Cover Letter v1
-    const fileR1 = new Blob(["Resume v1"], { type: "application/pdf" });
+    const fileR1 = new Blob(
+      [`Resume v1 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const resumeV1 = await uploadDocument(clientA, {
       file: fileR1,
       fileName: "userA_resume_v1.pdf",
@@ -369,7 +390,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
       documentType: "RESUME",
     });
 
-    const fileC1 = new Blob(["Cover Letter v1"], { type: "application/pdf" });
+    const fileC1 = new Blob(
+      [`Cover Letter v1 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const coverV1 = await uploadDocument(clientA, {
       file: fileC1,
       fileName: "userA_cover_v1.pdf",
@@ -482,7 +506,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     ).rejects.toThrow();
 
     // Upload Resume v2 and Perform Second Preparation
-    const fileR2 = new Blob(["Resume v2"], { type: "application/pdf" });
+    const fileR2 = new Blob(
+      [`Resume v2 ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const resumeV2 = await replaceDocumentVersion(
       clientA,
       resumeV1.document_group_id,
@@ -601,7 +628,10 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
       job_title: "Staff Security Architect",
     });
 
-    const fileDocA = new Blob(["Resume A"], { type: "application/pdf" });
+    const fileDocA = new Blob(
+      [`Resume A ${Date.now()}_${crypto.randomUUID()}`],
+      { type: "application/pdf" },
+    );
     const docA = await uploadDocument(clientA, {
       file: fileDocA,
       fileName: "docA.pdf",
@@ -894,5 +924,59 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     );
     expect(prepArchivedErr).not.toBeNull();
     expect(prepArchivedErr?.message).toMatch(/APPLICATION_IS_ARCHIVED/);
+  }, 60000);
+
+  it("11. Phase 2D-2C-3A: Document Content Hash & Duplicate Detection (Per-User Scope)", async () => {
+    const uniqueContent = `Document Duplicate Test Content ${Date.now()}_${crypto.randomUUID()}`;
+    const fileA1 = new Blob([uniqueContent], { type: "application/pdf" });
+
+    // 1. User A uploads original document
+    const docA1 = await uploadDocument(clientA, {
+      file: fileA1,
+      fileName: "original_document.pdf",
+      category: "resumes",
+      documentType: "RESUME",
+    });
+
+    expect(docA1.content_hash).toBeDefined();
+    expect(docA1.content_hash).toHaveLength(64);
+
+    // 2. User A looks up document by content hash -> finds document
+    const foundDoc = await findDocumentByContentHash(
+      clientA,
+      docA1.content_hash!,
+    );
+    expect(foundDoc).not.toBeNull();
+    expect(foundDoc?.id).toBe(docA1.id);
+
+    // 3. User B looks up document with User A's content hash -> returns null (cross-tenant RLS isolation)
+    const foundByB = await findDocumentByContentHash(
+      clientB,
+      docA1.content_hash!,
+    );
+    expect(foundByB).toBeNull();
+
+    // 4. User A attempts to upload duplicate content with DIFFERENT filename, category, and document_type -> Rejects with ConflictError
+    const fileA2 = new Blob([uniqueContent], { type: "application/pdf" });
+    await expect(
+      uploadDocument(clientA, {
+        file: fileA2,
+        fileName: "totally_different_filename.pdf",
+        category: "portfolio",
+        documentType: "PORTFOLIO",
+      }),
+    ).rejects.toThrow(ConflictError);
+
+    // 5. User B uploads the SAME content -> Succeeds (proves per-user uniqueness scoping)
+    const fileB = new Blob([uniqueContent], { type: "application/pdf" });
+    const docB = await uploadDocument(clientB, {
+      file: fileB,
+      fileName: "user_b_document.pdf",
+      category: "cover-letters",
+      documentType: "COVER_LETTER",
+    });
+
+    expect(docB.content_hash).toBe(docA1.content_hash);
+    expect(docB.user_id).not.toBe(docA1.user_id);
   }, 60000);
 });
