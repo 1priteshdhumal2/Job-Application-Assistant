@@ -146,4 +146,27 @@ describe("Electron Security & IPC Architecture", () => {
     expect(result.success).toBe(true);
     expect(result.filePath).toBe("/downloads/ExportedCV.pdf");
   });
+
+  it("verifies bundled preload output has zero unbundled @jobpilot external runtime imports", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const preloadPath = path.resolve(
+      __dirname,
+      "../dist-electron/preload/index.js",
+    );
+
+    if (fs.existsSync(preloadPath)) {
+      const content = fs.readFileSync(preloadPath, "utf-8");
+
+      // Verify no workspace require calls exist
+      expect(content).not.toContain('require("@jobpilot/');
+      expect(content).not.toContain("require('@jobpilot/");
+      expect(content).not.toContain("@jobpilot/shared");
+
+      // Verify contextBridge and IPC channels are present
+      expect(content).toContain("exposeInMainWorld");
+      expect(content).toContain("jobpilot:dialog:selectDocumentFile");
+      expect(content).toContain("jobpilot:dialog:saveDocumentFile");
+    }
+  });
 });
