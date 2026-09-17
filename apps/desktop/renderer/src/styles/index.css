@@ -1108,3 +1108,114 @@ body {
   font-family: var(--font-mono);
   font-size: 0.85rem;
 }
+
+/* ==========================================================================
+   Document Upload Modal Styles (Phase 2D-2C-3B)
+   ========================================================================== */
+
+.upload-document-dialog {
+  max-width: 520px;
+}
+
+.file-info-summary {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.file-info-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.file-info-icon {
+  font-size: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-info-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow: hidden;
+}
+
+.file-info-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-info-size {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.upload-document-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.form-select {
+  cursor: pointer;
+}
+
+.form-input-readonly {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: var(--text-secondary) !important;
+  cursor: default;
+}
+
+.form-help-text {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.upload-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 0.45rem;
+}
+
+.alert-dismissible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.alert-close-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+.alert-close-btn:hover {
+  opacity: 1;
+}

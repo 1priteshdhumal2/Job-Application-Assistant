@@ -633,3 +633,32 @@ Users may inadvertently or intentionally attempt to upload identical documents u
 - Strict prevention of duplicate content per user library across all categories, document types, and file names for all newly uploaded and versioned documents.
 - Complete tenant isolation: the same file content uploaded by different users is allowed without cross-tenant conflict or data leakage.
 - **MVP Migration State & Limitation**: For the fast-tracked MVP, legacy documents created prior to Phase 2D-2C-3A may have `content_hash = NULL`. Legacy documents with NULL content_hash are not detected as duplicates of newly uploaded files until an out-of-band administrative backfill is executed. All subsequent uploads and version replacements compute and enforce SHA-256 hashes unconditionally.
+
+---
+
+## ADR 026: Desktop Document Upload Vertical Slice & Metadata Binding (Phase 2D-2C-3B)
+
+### Status
+
+Accepted (Phase 2D-2C-3B)
+
+### Context
+
+Document upload requires a cohesive user journey bridging the Electron native OS file picker (`selectDocumentFile`), metadata entry and validation, category mapping, cryptographic SHA-256 content verification, private storage upload, atomic Version 1 creation, and seamless list refresh.
+
+### Decision
+
+1. **Native OS Picker Entrypoint**: Use `window.jobPilot.selectDocumentFile()` to safely choose local files via sandboxed IPC without exposing Node fs/path primitives or credentials to the renderer.
+2. **Metadata Derivation & Binding**:
+   - Initial Document Name is derived by stripping the file extension while preserving dots/underscores in the base name, and remains editable.
+   - Document Type is mandatory from a 5-item enumerated set (`Resume`, `Cover Letter`, `Certificate`, `Portfolio`, `Other`) with no default selected.
+   - Category is read-only and automatically mapped from the selected Document Type (`resumes`, `cover-letters`, `certificates`, `portfolio`, `other`).
+3. **Validation & Size Limits**: Strict 25 MB ceiling (`26,214,400` bytes) and extension validation (`.pdf`, `.docx`, `.xlsx`) enforced both upfront in UI and within `@jobpilot/validation`.
+4. **Clean Duplicate Error UX**: Map `ConflictError` to `"A document with identical content already exists in your library."` avoiding database or internal SQL leakages.
+5. **Orchestration Boundary**: The renderer invokes `@jobpilot/use-cases` `executeUploadUserDocument`, which enforces authentication, storage upload, storage compensation on database insert failure, and Version 1 (`version = 1`, `is_active = true`, fresh `document_group_id`) persistence.
+
+### Consequences
+
+- Robust, production-grade document upload flow adhering to strict layered architecture (Renderer -> Use Cases -> Database -> Supabase).
+- No direct Supabase calls from renderer.
+- Zero leftover storage artifacts on insertion failures via automated compensation.

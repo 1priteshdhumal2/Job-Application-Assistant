@@ -296,4 +296,50 @@ sequenceDiagram
     end
 ```
 
-> **MVP Migration State & Duplicate Identity Invariant**: Duplicate identity is strictly defined as `(user_id, content_hash)` where `content_hash` is the SHA-256 hash of the exact stored binary bytes. For the fast-tracked MVP, legacy documents created prior to Phase 2D-2C-3A may have `content_hash = NULL` until a future administrative backfill is executed. All subsequent uploads and version replacements calculate and enforce SHA-256 hashes unconditionally. Multi-tenant uploads of identical content by different users are fully isolated and permitted.
+> **MVP Migration State & Duplicate Identity Invariant**: Duplicate identity is strictly defined as `(user_id, content_hash)` where `content_hash` is the SHA-256 hash of the exact stored binary bytes. For the fast-tracked MVP, legacy documents created prior to Phase 2D-2C-3A may have `content_hash = NULL` until a future administrative backfill is executed. All subsequent uploads and version replacements compute and enforce SHA-256 hashes unconditionally. Multi-tenant uploads of identical content by different users are fully isolated and permitted.
+
+---
+
+## 9. Desktop Document Upload Vertical Slice Flow (Phase 2D-2C-3B)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant DocumentsPage as DocumentsPage.tsx
+    participant IPC as window.jobPilot (Preload/Electron Main)
+    participant Modal as UploadDocumentModal.tsx
+    participant UseCase as @jobpilot/use-cases (executeUploadUserDocument)
+    participant Domain as @jobpilot/database (uploadDocument)
+    participant Storage as Supabase Storage (user-documents)
+    participant DB as PostgreSQL (public.documents)
+
+    User->>DocumentsPage: Click "+ Upload Document"
+    DocumentsPage->>IPC: selectDocumentFile()
+    IPC-->>DocumentsPage: Return SelectedDocumentFile { fileName, fileSize, mimeType, fileData }
+    DocumentsPage->>Modal: Open Modal with SelectedDocumentFile
+
+    Note over Modal: 1. Derive Initial Name (strip extension)<br/>2. User selects Document Type<br/>3. Category auto-derived (read-only)
+    User->>Modal: Edit name & click "Upload"
+    Modal->>UseCase: executeUploadUserDocument({ supabase }, { file, fileName, name, category, documentType })
+    UseCase->>Domain: uploadDocument(supabase, input)
+
+    Note over Domain: 1. Validate file (size <= 25MB, ext)<br/>2. SHA-256 contentHash calculation<br/>3. Check existing contentHash per user
+
+    alt Duplicate Hash Found in User Library
+        Domain-->>UseCase: Throw ConflictError
+        UseCase-->>Modal: Propagate ConflictError
+        Note over Modal: Display "A document with identical content already exists in your library."
+    else Unique Content
+        Domain->>Storage: upload(storagePath, binary)
+        alt Storage Upload Succeeds
+            Domain->>DB: INSERT into documents (version=1, is_active=true, document_group_id=uuid, content_hash)
+            DB-->>Domain: Return DocumentRecord
+            Domain-->>UseCase: Return DocumentRecord
+            UseCase-->>Modal: Return DocumentRecord
+            Modal->>DocumentsPage: onSuccess(document)
+            Note over DocumentsPage: 1. Close Modal<br/>2. Show success banner<br/>3. Call refresh() to update DocumentTable
+            DocumentsPage-->>User: Render updated document list with newly uploaded document
+        end
+    end
+```

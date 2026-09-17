@@ -3,9 +3,11 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { DocumentsPage } from "../../renderer/src/pages/documents/DocumentsPage";
 import * as useDocumentsListModule from "../../renderer/src/hooks/useDocumentsList";
+import * as authModule from "../../renderer/src/auth/useAuth";
 import type { DocumentRecord } from "@jobpilot/types";
+import type { SupabaseClient, User, Session } from "@jobpilot/database";
 
-describe("DocumentsPage Component Integration", () => {
+describe("DocumentsPage Component Integration (Phase 2D-2C-3B)", () => {
   const sampleDoc: DocumentRecord = {
     id: "doc-1",
     user_id: "user-1",
@@ -39,6 +41,20 @@ describe("DocumentsPage Component Integration", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(authModule, "useAuth").mockReturnValue({
+      user: { id: "user-1", email: "candidate@example.com" } as User,
+      session: {} as Session,
+      status: "AUTHENTICATED",
+      error: null,
+      pendingVerificationEmail: null,
+      signInWithPassword: vi.fn(),
+      signUpWithPassword: vi.fn(),
+      signInWithGoogle: vi.fn(),
+      signOut: vi.fn(),
+      resendVerificationEmail: vi.fn(),
+      refreshSession: vi.fn(),
+      supabase: null as unknown as SupabaseClient,
+    });
   });
 
   function renderPage() {
@@ -78,7 +94,7 @@ describe("DocumentsPage Component Integration", () => {
     expect(html).toContain("Try Again");
   });
 
-  it("3. renders unfiltered empty state when total is 0 and no filters active", () => {
+  it("3. renders unfiltered empty state with + Upload Document button when total is 0 and no filters active", () => {
     vi.spyOn(useDocumentsListModule, "useDocumentsList").mockReturnValue({
       ...defaultMockReturn,
       documents: [],
@@ -92,6 +108,7 @@ describe("DocumentsPage Component Integration", () => {
     expect(html).toContain(
       "Your active documents will appear here once uploaded.",
     );
+    expect(html).toContain("+ Upload Document");
   });
 
   it("4. renders filtered empty state when total is 0 and filters are active", () => {
@@ -123,7 +140,7 @@ describe("DocumentsPage Component Integration", () => {
     expect(html).toContain("Page 1 of 1 (1 document)");
   });
 
-  it("6. renders header with Refresh button", () => {
+  it("6. renders header with Refresh and + Upload Document action buttons", () => {
     vi.spyOn(useDocumentsListModule, "useDocumentsList").mockReturnValue(
       defaultMockReturn,
     );
@@ -131,6 +148,47 @@ describe("DocumentsPage Component Integration", () => {
     const html = renderPage();
 
     expect(html).toContain("Refresh");
-    expect(html).toContain("Manage your resumes and cover letters.");
+    expect(html).toContain("+ Upload Document");
+    expect(html).toContain('id="upload-document-button"');
+  });
+
+  it("7. invokes window.jobPilot.selectDocumentFile when Upload Document is triggered", async () => {
+    const selectMock = vi.fn().mockResolvedValue({
+      canceled: false,
+      file: {
+        fileName: "resume.pdf",
+        fileSize: 1024,
+        mimeType: "application/pdf",
+        fileData: new Uint8Array([1, 2, 3]),
+      },
+    });
+
+    globalThis.window = {
+      jobPilot: {
+        selectDocumentFile: selectMock,
+      },
+    } as unknown as Window & typeof globalThis;
+
+    const result = await window.jobPilot!.selectDocumentFile();
+    expect(selectMock).toHaveBeenCalledTimes(1);
+    expect(result.canceled).toBe(false);
+    expect(result.file?.fileName).toBe("resume.pdf");
+  });
+
+  it("8. handles file picker cancellation without initiating upload", async () => {
+    const selectMock = vi.fn().mockResolvedValue({
+      canceled: true,
+    });
+
+    globalThis.window = {
+      jobPilot: {
+        selectDocumentFile: selectMock,
+      },
+    } as unknown as Window & typeof globalThis;
+
+    const result = await window.jobPilot!.selectDocumentFile();
+    expect(selectMock).toHaveBeenCalledTimes(1);
+    expect(result.canceled).toBe(true);
+    expect(result.file).toBeUndefined();
   });
 });

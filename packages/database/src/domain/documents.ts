@@ -54,6 +54,7 @@ export interface UploadDocumentInput {
   category: UserDocumentCategory;
   documentType: DocumentType;
   contentHash?: string;
+  name?: string;
 }
 
 export interface ReplaceDocumentVersionInput {
@@ -260,7 +261,7 @@ export async function uploadDocument(
         document_group_id: documentGroupId,
         document_type: input.documentType,
         category: input.category,
-        name: input.fileName,
+        name: input.name || input.fileName,
         storage_path: storagePath,
         mime_type: input.file.type,
         file_size: input.file.size,
