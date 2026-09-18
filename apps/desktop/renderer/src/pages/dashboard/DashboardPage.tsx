@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../../components/ui/PageHeader";
+import { BrowserExtensionCard } from "../../components/bridge/BrowserExtensionCard";
 
 export function DashboardPage(): React.ReactElement {
   return (
@@ -11,6 +12,8 @@ export function DashboardPage(): React.ReactElement {
       />
 
       <div className="grid">
+        <BrowserExtensionCard />
+
         <div className="card">
           <h2 className="card-title">
             <span>💼 Jobs</span>

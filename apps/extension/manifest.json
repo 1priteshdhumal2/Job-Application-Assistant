@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "JobPilot Assistant",
+  "version": "0.1.0",
+  "description": "AI-Assisted Job Application Automation Companion for Chrome and Edge",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://*.indeed.com/*", "http://127.0.0.1:4173/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.indeed.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "JobPilot Assistant"
+  }
+}

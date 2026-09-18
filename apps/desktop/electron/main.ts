@@ -9,8 +9,11 @@ import {
   SaveDocumentFileResult,
 } from "@jobpilot/types";
 
+import { BridgeServer, BridgeAuthManager } from "./bridge/index.js";
+
 const logger = createLogger("electron-main");
 let mainWindow: BrowserWindow | null = null;
+let bridgeServer: BridgeServer | null = null;
 
 const isDev = process.env["NODE_ENV"] === "development" || !app.isPackaged;
 
@@ -181,6 +184,16 @@ function registerIpcHandlers(): void {
       }
     },
   );
+
+  // 5. Local Bridge Info
+  ipcMain.handle(IPC_CHANNELS.GET_BRIDGE_INFO, () => {
+    if (!bridgeServer) return null;
+    return {
+      host: bridgeServer.getHost(),
+      port: bridgeServer.getPort(),
+      pairingCode: bridgeServer.getAuthManager().getPairingCode(),
+    };
+  });
 }
 
 function createWindow(): void {
@@ -227,10 +240,22 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   logger.info("Starting JobPilot Electron Main Process...");
   setupContentSecurityPolicy();
   registerIpcHandlers();
+
+  // Start local loopback bridge for Chrome/Edge extension (127.0.0.1:4173)
+  try {
+    const authPath = path.join(app.getPath("userData"), "bridge-auth.json");
+    const authManager = new BridgeAuthManager({ storagePath: authPath });
+    bridgeServer = new BridgeServer({ authManager });
+    await bridgeServer.start();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(`Failed to start Desktop Bridge on port 4173: ${message}`);
+  }
+
   createWindow();
 
   app.on("activate", () => {
@@ -238,6 +263,13 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on("will-quit", async () => {
+  if (bridgeServer) {
+    await bridgeServer.stop();
+    bridgeServer = null;
+  }
 });
 
 app.on("window-all-closed", () => {

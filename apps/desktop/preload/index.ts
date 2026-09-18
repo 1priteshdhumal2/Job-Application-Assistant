@@ -31,6 +31,9 @@ const api: JobPilotElectronAPI = {
   ): Promise<SaveDocumentFileResult> => {
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_DOCUMENT_FILE, params);
   },
+  getBridgeInfo: async () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_BRIDGE_INFO);
+  },
 };
 
 // Expose protected API under window.jobPilot

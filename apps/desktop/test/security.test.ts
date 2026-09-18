@@ -39,6 +39,11 @@ describe("Electron Security & IPC Architecture", () => {
         success: true,
         filePath: "C:\\Users\\User\\Documents\\Resume.pdf",
       }),
+      getBridgeInfo: async () => ({
+        host: "127.0.0.1",
+        port: 4173,
+        pairingCode: "A1B2C3D4",
+      }),
     };
 
     // Assert explicit methods exist and return promises
@@ -46,6 +51,7 @@ describe("Electron Security & IPC Architecture", () => {
     expect(typeof mockPreloadAPI.getEnvironmentInfo).toBe("function");
     expect(typeof mockPreloadAPI.selectDocumentFile).toBe("function");
     expect(typeof mockPreloadAPI.saveDocumentFile).toBe("function");
+    expect(typeof mockPreloadAPI.getBridgeInfo).toBe("function");
 
     // Assert that dangerous arbitrary IPC methods are absent
     const apiKeys = Object.keys(mockPreloadAPI);
@@ -59,6 +65,7 @@ describe("Electron Security & IPC Architecture", () => {
       "getEnvironmentInfo",
       "selectDocumentFile",
       "saveDocumentFile",
+      "getBridgeInfo",
     ]);
   });
 
@@ -75,6 +82,7 @@ describe("Electron Security & IPC Architecture", () => {
       }),
       selectDocumentFile: async () => ({ canceled: true }),
       saveDocumentFile: async () => ({ canceled: true, success: false }),
+      getBridgeInfo: async () => null,
     };
 
     const env = await mockPreloadAPI.getEnvironmentInfo();
@@ -107,6 +115,7 @@ describe("Electron Security & IPC Architecture", () => {
         },
       }),
       saveDocumentFile: async () => ({ canceled: true, success: false }),
+      getBridgeInfo: async () => null,
     };
 
     const result = await mockPreloadAPI.selectDocumentFile();
@@ -135,6 +144,7 @@ describe("Electron Security & IPC Architecture", () => {
         success: true,
         filePath: `/downloads/${params.defaultFileName}`,
       }),
+      getBridgeInfo: async () => null,
     };
 
     const result = await mockPreloadAPI.saveDocumentFile({

@@ -343,3 +343,61 @@ sequenceDiagram
         end
     end
 ```
+
+---
+
+## 10. Extension ↔ Desktop Local Bridge Communication Flow (Phase 2D-3 Slice A)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Popup as Extension Popup / Content Script
+    participant SW as Background Service Worker (apps/extension)
+    participant Client as ExtensionBridgeClient
+    participant Bridge as Electron Main BridgeServer (127.0.0.1:4173)
+    participant Auth as BridgeAuthManager
+    participant Main as Electron Main State
+
+    User->>Popup: Open Extension / Check Status
+    Popup->>SW: chrome.runtime.sendMessage({ type: 'CHECK_CONNECTION' })
+    SW->>Client: checkHealth()
+    Client->>Bridge: GET http://127.0.0.1:4173/api/v1/bridge/health [Authorization: Bearer <secret>?]
+
+    alt Desktop Not Running (Connection Refused)
+        Bridge--xClient: Connection Refused / Timeout
+        Client-->>SW: Throw error ("JobPilot Desktop is not running")
+        SW-->>Popup: { success: false, error: "Desktop disconnected" }
+        Popup-->>User: Show "JobPilot Desktop Disconnected" UI
+    else Desktop Running & Healthy
+        Bridge->>Auth: Validate Token (if provided)
+        Bridge-->>Client: 200 OK { status: 'ok', authenticated: true/false, version: '1.0.0' }
+        Client-->>SW: Return BridgeHealthResponse
+        SW-->>Popup: { success: true, data: { status: 'ok', authenticated: true/false } }
+
+        alt Unauthenticated (Initial Pairing)
+            Popup-->>User: Show Pairing Screen (Enter Pairing Code)
+            User->>Popup: Enter 8-character Pairing Code
+            Popup->>SW: chrome.runtime.sendMessage({ type: 'PAIR_BRIDGE', payload: { pairingCode } })
+            SW->>Client: pair(pairingCode)
+            Client->>Bridge: POST http://127.0.0.1:4173/api/v1/bridge/pair { pairingCode }
+            Bridge->>Auth: verifyPairingCode(code)
+            alt Valid Pairing Code
+                Auth-->>Bridge: OK, return secret
+                Bridge-->>Client: 200 OK { success: true, token: "<secret>" }
+                Client->>Client: Store secret in chrome.storage.local
+                Client-->>SW: { success: true }
+                SW-->>Popup: { success: true }
+                Popup-->>User: Show "Connected & Paired" Status
+            else Invalid Pairing Code
+                Auth-->>Bridge: Invalid
+                Bridge-->>Client: 401 Unauthorized { error: "Invalid pairing code" }
+                Client-->>SW: { success: false, error: "Invalid pairing code" }
+                SW-->>Popup: { success: false }
+                Popup-->>User: Show "Invalid code, try again"
+            end
+        else Already Authenticated
+            Popup-->>User: Show "Connected to JobPilot Desktop"
+        end
+    end
+```

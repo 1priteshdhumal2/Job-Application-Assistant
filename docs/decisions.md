@@ -662,3 +662,48 @@ Document upload requires a cohesive user journey bridging the Electron native OS
 - Robust, production-grade document upload flow adhering to strict layered architecture (Renderer -> Use Cases -> Database -> Supabase).
 - No direct Supabase calls from renderer.
 - Zero leftover storage artifacts on insertion failures via automated compensation.
+
+---
+
+## ADR 027: Chrome/Edge Extension Scaffold & Authenticated Desktop Local Bridge (Phase 2D-3 Slice A)
+
+### Status
+
+Accepted (Phase 2D-3 Slice A)
+
+### Context
+
+JobPilot requires a browser extension for Chrome and Edge to detect job portals (starting with Indeed) and communicate with the JobPilot Desktop app. To keep the extension lightweight, secure, and maintainable, the extension must NOT duplicate desktop features (such as resume selection, document management, or direct Supabase credential handling). Instead, communication must happen securely between the Extension Background Service Worker and an Authenticated Local Bridge hosted in the Electron Main process.
+
+### Decision
+
+1. **Architecture & Scope (Slice A)**:
+   - Implement the minimal Manifest V3 extension in `apps/extension/` with a Background Service Worker, minimal content script placeholder, and status/pairing popup UI.
+   - Host an HTTP REST local bridge in Electron Main (`apps/desktop/electron/bridge/`).
+   - Portal adapter interfaces defined in `@jobpilot/portal-adapters` package scaffold.
+2. **Strict Loopback Binding & Port**:
+   - The bridge strictly binds to `127.0.0.1` on port `4173`.
+   - Never bind to `0.0.0.0`, LAN interfaces, or public interfaces.
+   - Remote address check enforces `req.socket.remoteAddress` is `127.0.0.1` or `::1`.
+3. **Authentication & Secret Management**:
+   - Cryptographically random 32-byte hex secret generated per installation.
+   - Persisted in Electron app-private storage (`bridge_auth.json` inside Electron `userData`).
+   - Authentication via `Authorization: Bearer <secret>` header.
+   - Constant-time secret comparison via `crypto.timingSafeEqual` prevents timing attacks.
+   - 8-character pairing code fallback allows easy initial setup without hard-coding credentials.
+   - Zero exposure of Supabase credentials, database secrets, or file system access to the extension.
+4. **Transport Isolation**:
+   - The extension content script runs in the isolated webpage context and does NOT speak directly to `127.0.0.1`.
+   - The content script sends standard `chrome.runtime.sendMessage` to the Background Service Worker.
+   - Only the Background Service Worker makes `fetch()` requests to `http://127.0.0.1:4173`.
+5. **Shared Protocol Types**:
+   - All bridge payloads and extension message contracts are defined in `@jobpilot/types` (`BridgeHealthResponse`, `BridgePairRequest`, `BridgePairResponse`, `BridgeStatusResponse`, `ExtensionMessage`, `ExtensionResponse`).
+6. **Electron Security Invariants**:
+   - Renderer context isolation (`contextIsolation: true`), sandboxing (`sandbox: true`), and disabled Node integration (`nodeIntegration: false`) remain strictly enforced.
+   - No arbitrary IPC or filesystem primitives exposed.
+
+### Consequences
+
+- Secure, tamper-resistant bridge communication between browser extension and desktop application.
+- Extension operates with least privilege (no cloud tokens or DB credentials stored in extension).
+- Single source of truth in Electron Desktop App for resume/application preparation in subsequent slices.

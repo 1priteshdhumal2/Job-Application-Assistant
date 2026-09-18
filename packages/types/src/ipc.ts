@@ -35,6 +35,12 @@ export interface SaveDocumentFileResult {
   error?: string;
 }
 
+export interface DesktopBridgeInfo {
+  host: string;
+  port: number;
+  pairingCode: string;
+}
+
 export interface JobPilotElectronAPI {
   getAppVersion: () => Promise<string>;
   getEnvironmentInfo: () => Promise<DesktopEnvironmentInfo>;
@@ -42,6 +48,7 @@ export interface JobPilotElectronAPI {
   saveDocumentFile: (
     params: SaveDocumentFileParams,
   ) => Promise<SaveDocumentFileResult>;
+  getBridgeInfo: () => Promise<DesktopBridgeInfo | null>;
 }
 
 declare global {

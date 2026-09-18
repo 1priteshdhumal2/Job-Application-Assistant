@@ -31,6 +31,10 @@ export default defineConfig({
         __dirname,
         "./packages/use-cases/src/index.ts",
       ),
+      "@jobpilot/portal-adapters": path.resolve(
+        __dirname,
+        "./packages/portal-adapters/src/index.ts",
+      ),
     },
     coverage: {
       provider: "v8",
