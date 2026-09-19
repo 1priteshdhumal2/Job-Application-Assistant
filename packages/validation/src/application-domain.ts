@@ -48,3 +48,18 @@ export const prepareApplicationSchema = z.object({
   idempotency_key: z.string().uuid("Invalid idempotency key").optional(),
   answers: z.array(applicationAnswerInputSchema).optional(),
 });
+
+export const capturePortalJobSchema = z.object({
+  portalCode: z.string().trim().min(1, "Portal code is required").max(50),
+  externalJobId: z
+    .string()
+    .trim()
+    .min(1, "External job ID is required")
+    .max(255),
+  jobTitle: z.string().trim().min(1, "Job title is required").max(200),
+  companyName: z.string().trim().min(1, "Company name is required").max(200),
+  jobUrl: z.string().url("Invalid job URL").max(2000),
+  location: z.string().trim().max(200).nullable().optional(),
+  description: z.string().trim().max(50000).nullable().optional(),
+  capturedAt: z.string().datetime({ offset: true }).nullable().optional(),
+});

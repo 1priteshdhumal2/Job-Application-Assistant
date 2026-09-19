@@ -1,36 +1,15 @@
-import React, { useState, useEffect } from "react";
-import type { CapturedJobPayload } from "@jobpilot/types";
+import React from "react";
+import { Link } from "react-router-dom";
+import { useCaptureWorkflow } from "../../context/CaptureWorkflowContext";
 
 export function CapturedJobCard(): React.ReactElement {
-  const [capturedJob, setCapturedJob] = useState<CapturedJobPayload | null>(
-    null,
-  );
-
-  useEffect(() => {
-    // 1. Initial fetch from Electron Main
-    if (typeof window !== "undefined" && window.jobPilot?.getCapturedJob) {
-      window.jobPilot
-        .getCapturedJob()
-        .then((job) => {
-          if (job) setCapturedJob(job);
-        })
-        .catch(() => {});
-    }
-
-    // 2. Subscribe to real-time captured job events
-    let unsubscribe: (() => void) | undefined;
-    if (typeof window !== "undefined" && window.jobPilot?.onJobCaptured) {
-      unsubscribe = window.jobPilot.onJobCaptured((job) => {
-        setCapturedJob(job);
-      });
-    }
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, []);
+  const {
+    capturedJob,
+    persistedResult,
+    status: captureStatus,
+    error: captureError,
+    clearCapturedJob,
+  } = useCaptureWorkflow();
 
   return (
     <div
@@ -81,14 +60,27 @@ export function CapturedJobCard(): React.ReactElement {
           )}
         </h2>
         {capturedJob && (
-          <span
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--text-muted)",
-            }}
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}
           >
-            Captured: {new Date(capturedJob.capturedAt).toLocaleTimeString()}
-          </span>
+            <span
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--text-muted)",
+              }}
+            >
+              Captured: {new Date(capturedJob.capturedAt).toLocaleTimeString()}
+            </span>
+            <button
+              type="button"
+              onClick={clearCapturedJob}
+              className="btn btn-secondary"
+              style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+              title="Dismiss captured job"
+            >
+              ✕ Dismiss
+            </button>
+          </div>
         )}
       </div>
 
@@ -125,6 +117,96 @@ export function CapturedJobCard(): React.ReactElement {
             gap: "0.75rem",
           }}
         >
+          {/* Persistence status banner */}
+          {captureStatus === "persisting" && (
+            <div
+              data-testid="capture-persisting-status"
+              style={{
+                background: "rgba(6, 182, 212, 0.12)",
+                border: "1px solid rgba(6, 182, 212, 0.3)",
+                color: "var(--accent-cyan)",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "4px",
+                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+              }}
+            >
+              <span>⏳ Persisting job and application to workspace...</span>
+            </div>
+          )}
+
+          {captureStatus === "error" && captureError && (
+            <div
+              data-testid="capture-error-status"
+              style={{
+                background: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "#fca5a5",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "4px",
+                fontSize: "0.85rem",
+              }}
+            >
+              ⚠️ {captureError}
+            </div>
+          )}
+
+          {captureStatus === "success" && persistedResult && (
+            <div
+              data-testid="capture-success-status"
+              style={{
+                background: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.3)",
+                color: "#6ee7b7",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "4px",
+                fontSize: "0.85rem",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.5rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <span>
+                  {persistedResult.isNewJob
+                    ? "✨ New Job Created"
+                    : "🔄 Job Metadata Updated"}
+                </span>
+                <span>•</span>
+                <span>
+                  {persistedResult.applicationRestored
+                    ? "♻️ Application Restored"
+                    : persistedResult.applicationCreated
+                      ? "💾 Application Created (SAVED)"
+                      : "📋 Application Reused"}
+                </span>
+              </div>
+              <Link
+                to={`/app/applications/${persistedResult.application.id}`}
+                className="btn btn-primary"
+                data-testid="open-application-btn"
+                style={{
+                  fontSize: "0.8rem",
+                  padding: "0.3rem 0.75rem",
+                  textDecoration: "none",
+                }}
+              >
+                Open Application →
+              </Link>
+            </div>
+          )}
+
           <div>
             <div
               data-testid="captured-job-title"

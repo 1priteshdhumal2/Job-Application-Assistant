@@ -15,6 +15,7 @@ export interface Job {
   id: string;
   user_id: string;
   portal_id: string | null;
+  external_job_id?: string | null;
   company_name: string;
   job_title: string;
   job_url: string | null;

@@ -3,6 +3,7 @@
 // ==============================================================================
 
 export * from "./common/context.js";
+export * from "./applications/capture-portal-job.use-case.js";
 export * from "./applications/prepare-application.use-case.js";
 export * from "./applications/transition-application-status.use-case.js";
 export * from "./applications/archive-application.use-case.js";

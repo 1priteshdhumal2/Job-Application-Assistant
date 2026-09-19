@@ -1,39 +1,40 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { CapturedJobCard } from "../../renderer/src/components/bridge/CapturedJobCard";
-import type { CapturedJobPayload, JobPilotElectronAPI } from "@jobpilot/types";
+import * as workflowModule from "../../renderer/src/context/CaptureWorkflowContext";
+import type { CapturedJobPayload } from "@jobpilot/types";
 
-describe("CapturedJobCard Component (Phase 2D-3 Slice B)", () => {
+describe("CapturedJobCard Component (Phase 2D-3 Slice C)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete (globalThis as unknown as { window?: { jobPilot?: unknown } })
-      .window;
   });
 
   it("1. renders empty state placeholder when no job has been captured yet", () => {
-    (
-      globalThis as unknown as {
-        window: { jobPilot: Partial<JobPilotElectronAPI> };
-      }
-    ).window = {
-      jobPilot: {
-        getCapturedJob: vi.fn().mockResolvedValue(null),
-        onJobCaptured: vi.fn(() => () => {}),
-      },
-    };
+    vi.spyOn(workflowModule, "useCaptureWorkflow").mockReturnValue({
+      status: "idle",
+      capturedJob: null,
+      persistedResult: null,
+      error: null,
+      clearCapturedJob: vi.fn(),
+    });
 
-    const html = renderToString(<CapturedJobCard />);
+    const html = renderToString(
+      <MemoryRouter>
+        <CapturedJobCard />
+      </MemoryRouter>,
+    );
     expect(html).toContain("Captured Job Context");
     expect(html).toContain("No job captured yet");
   });
 
-  it("2. displays captured job details correctly via API mock", async () => {
+  it("2. displays captured job details and persisting status when persisting", () => {
     const mockJob: CapturedJobPayload = {
-      portal: "indeed",
+      portal: "INDEED",
       externalJobId: "jk_test_123",
       url: "https://www.indeed.com/viewjob?jk=jk_test_123",
       title: "Senior React Engineer",
@@ -43,76 +44,118 @@ describe("CapturedJobCard Component (Phase 2D-3 Slice B)", () => {
       capturedAt: "2026-09-18T12:00:00.000Z",
     };
 
-    (
-      globalThis as unknown as {
-        window: { jobPilot: Partial<JobPilotElectronAPI> };
-      }
-    ).window = {
-      jobPilot: {
-        getCapturedJob: vi.fn().mockResolvedValue(mockJob),
-        onJobCaptured: vi.fn(() => () => {}),
-      },
-    };
+    vi.spyOn(workflowModule, "useCaptureWorkflow").mockReturnValue({
+      status: "persisting",
+      capturedJob: mockJob,
+      persistedResult: null,
+      error: null,
+      clearCapturedJob: vi.fn(),
+    });
 
-    const api = (
-      globalThis as unknown as {
-        window: { jobPilot: Partial<JobPilotElectronAPI> };
-      }
-    ).window.jobPilot;
-    const result = await api.getCapturedJob!();
-
-    expect(result).toEqual(mockJob);
-    expect(result?.title).toBe("Senior React Engineer");
-    expect(result?.company).toBe("Acme Cloud");
-    expect(result?.location).toBe("San Francisco, CA");
-    expect(result?.externalJobId).toBe("jk_test_123");
-    expect(result?.url).toBe("https://www.indeed.com/viewjob?jk=jk_test_123");
+    const html = renderToString(
+      <MemoryRouter>
+        <CapturedJobCard />
+      </MemoryRouter>,
+    );
+    expect(html).toContain("Senior React Engineer");
+    expect(html).toContain("Acme Cloud");
+    expect(html).toContain("jk_test_123");
+    expect(html).toContain("Persisting job and application to workspace...");
   });
 
-  it("3. registers listener via onJobCaptured for real-time streaming updates", () => {
-    let capturedCallback: ((job: CapturedJobPayload) => void) | null = null;
-    const onJobCapturedMock = vi.fn((cb: (job: CapturedJobPayload) => void) => {
-      capturedCallback = cb;
-      return () => {
-        capturedCallback = null;
-      };
-    });
-
-    (
-      globalThis as unknown as {
-        window: { jobPilot: Partial<JobPilotElectronAPI> };
-      }
-    ).window = {
-      jobPilot: {
-        getCapturedJob: vi.fn().mockResolvedValue(null),
-        onJobCaptured: onJobCapturedMock,
-      },
+  it("3. displays persistence success with Open Application CTA button", () => {
+    const mockJob: CapturedJobPayload = {
+      portal: "INDEED",
+      externalJobId: "jk_test_123",
+      url: "https://www.indeed.com/viewjob?jk=jk_test_123",
+      title: "Staff Engineer",
+      company: "Acme Inc",
+      location: "Remote",
+      capturedAt: "2026-09-18T12:00:00.000Z",
     };
 
-    const api = (
-      globalThis as unknown as {
-        window: { jobPilot: Partial<JobPilotElectronAPI> };
-      }
-    ).window.jobPilot;
-    const unsubscribe = api.onJobCaptured!((job) => {
-      expect(job.title).toBe("Principal Architect");
+    vi.spyOn(workflowModule, "useCaptureWorkflow").mockReturnValue({
+      status: "success",
+      capturedJob: mockJob,
+      persistedResult: {
+        job: {
+          id: "job-100",
+          user_id: "user-1",
+          portal_id: "portal-1",
+          external_job_id: "jk_test_123",
+          company_name: "Acme Inc",
+          job_title: "Staff Engineer",
+          job_url: "https://www.indeed.com/viewjob?jk=jk_test_123",
+          location: "Remote",
+          employment_type: null,
+          description: null,
+          salary_min: null,
+          salary_max: null,
+          currency: null,
+          posted_at: null,
+          captured_at: "2026-09-18T12:00:00.000Z",
+          status: "SAVED",
+          created_at: "2026-09-18T12:00:00.000Z",
+          updated_at: "2026-09-18T12:00:00.000Z",
+        },
+        application: {
+          id: "app-200",
+          user_id: "user-1",
+          job_id: "job-100",
+          status: "SAVED",
+          applied_at: null,
+          submitted_at: null,
+          resume_document_id: null,
+          cover_letter_document_id: null,
+          notes: null,
+          latest_preparation_id: null,
+          deleted_at: null,
+          created_at: "2026-09-18T12:00:00.000Z",
+          updated_at: "2026-09-18T12:00:00.000Z",
+        },
+        isNewJob: true,
+        applicationCreated: true,
+        applicationRestored: false,
+      },
+      error: null,
+      clearCapturedJob: vi.fn(),
     });
 
-    expect(onJobCapturedMock).toHaveBeenCalled();
-    expect(typeof capturedCallback).toBe("function");
+    const html = renderToString(
+      <MemoryRouter>
+        <CapturedJobCard />
+      </MemoryRouter>,
+    );
+    expect(html).toContain("New Job Created");
+    expect(html).toContain("Application Created (SAVED)");
+    expect(html).toContain("Open Application →");
+    expect(html).toContain('href="/app/applications/app-200"');
+  });
 
-    if (capturedCallback) {
-      (capturedCallback as (job: CapturedJobPayload) => void)({
-        portal: "indeed",
-        externalJobId: "jk_live_999",
-        url: "https://www.indeed.com/viewjob?jk=jk_live_999",
-        title: "Principal Architect",
-        company: "OpenAI",
-        location: "San Francisco, CA",
-        capturedAt: "2026-09-18T12:05:00.000Z",
-      });
-    }
+  it("4. displays error message when persistence fails", () => {
+    const mockJob: CapturedJobPayload = {
+      portal: "INDEED",
+      externalJobId: "jk_test_123",
+      url: "https://www.indeed.com/viewjob?jk=jk_test_123",
+      title: "Staff Engineer",
+      company: "Acme Inc",
+      location: "Remote",
+      capturedAt: "2026-09-18T12:00:00.000Z",
+    };
 
-    unsubscribe();
+    vi.spyOn(workflowModule, "useCaptureWorkflow").mockReturnValue({
+      status: "error",
+      capturedJob: mockJob,
+      persistedResult: null,
+      error: "Portal INDEED is currently inactive.",
+      clearCapturedJob: vi.fn(),
+    });
+
+    const html = renderToString(
+      <MemoryRouter>
+        <CapturedJobCard />
+      </MemoryRouter>,
+    );
+    expect(html).toContain("Portal INDEED is currently inactive.");
   });
 });

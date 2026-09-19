@@ -3,6 +3,7 @@
 // ==============================================================================
 
 import { ApplicationAnswerInput } from "./answer-domain.js";
+import { Job } from "./job-domain.js";
 
 export type ApplicationStatus =
   | "SAVED"
@@ -77,4 +78,23 @@ export interface PrepareApplicationInput {
   status?: "SAVED" | "INTERESTED";
   idempotency_key?: string;
   answers?: ApplicationAnswerInput[];
+}
+
+export interface CapturePortalJobInput {
+  portalCode: string;
+  externalJobId: string;
+  jobTitle: string;
+  companyName: string;
+  jobUrl: string;
+  location?: string | null;
+  description?: string | null;
+  capturedAt?: string | null;
+}
+
+export interface CapturePortalJobResult {
+  job: Job;
+  application: Application;
+  isNewJob: boolean;
+  applicationCreated: boolean;
+  applicationRestored: boolean;
 }

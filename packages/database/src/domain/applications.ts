@@ -10,6 +10,9 @@ import {
   ApplicationStatus,
   ApplicationPreparation,
   PrepareApplicationInput,
+  CapturePortalJobInput,
+  CapturePortalJobResult,
+  Job,
   PaginationParams,
   PaginatedResult,
   SortParams,
@@ -18,6 +21,7 @@ import {
   applicationSchema,
   applicationUpdateSchema,
   prepareApplicationSchema,
+  capturePortalJobSchema,
 } from "@jobpilot/validation";
 import { requireAuthUser } from "../common/auth.js";
 import {
@@ -376,4 +380,51 @@ export async function restoreApplication(
   }
 
   return data as Application;
+}
+
+/**
+ * Atomically captures/updates a portal job and finds, restores, or creates its 1-to-1 application.
+ */
+export async function capturePortalJob(
+  supabase: SupabaseClient,
+  input: CapturePortalJobInput,
+): Promise<CapturePortalJobResult> {
+  const user = await requireAuthUser(supabase);
+  const validated = capturePortalJobSchema.parse(input);
+
+  const { data, error } = await supabase.rpc("capture_portal_job", {
+    p_portal_code: validated.portalCode,
+    p_external_job_id: validated.externalJobId,
+    p_job_title: validated.jobTitle,
+    p_company_name: validated.companyName,
+    p_job_url: validated.jobUrl,
+    p_location: validated.location ?? null,
+    p_description: validated.description ?? null,
+    p_captured_at: validated.capturedAt ?? new Date().toISOString(),
+    p_user_id: user.id,
+  });
+
+  if (error) {
+    throw handleDatabaseError(error, "capturePortalJob");
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid response received from capture_portal_job RPC");
+  }
+
+  const result = data as {
+    job: Job;
+    application: Application;
+    is_new_job: boolean;
+    application_created: boolean;
+    application_restored: boolean;
+  };
+
+  return {
+    job: result.job,
+    application: result.application,
+    isNewJob: Boolean(result.is_new_job),
+    applicationCreated: Boolean(result.application_created),
+    applicationRestored: Boolean(result.application_restored),
+  };
 }

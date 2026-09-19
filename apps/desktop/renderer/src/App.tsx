@@ -5,6 +5,8 @@ import { AppRoutes } from "./routes/AppRoutes";
 import { LoadingState } from "./components/ui/LoadingState";
 import { ErrorState } from "./components/ui/ErrorState";
 
+import { CaptureWorkflowProvider } from "./context/CaptureWorkflowContext";
+
 function AppContent(): React.ReactElement {
   const { status, error } = useAuth();
 
@@ -29,9 +31,11 @@ function AppContent(): React.ReactElement {
   }
 
   return (
-    <HashRouter>
-      <AppRoutes />
-    </HashRouter>
+    <CaptureWorkflowProvider>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
+    </CaptureWorkflowProvider>
   );
 }
 

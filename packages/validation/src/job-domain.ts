@@ -7,6 +7,7 @@ import { JOB_STATUSES } from "@jobpilot/types";
 
 export const baseJobSchema = z.object({
   portal_id: z.string().uuid("Invalid portal ID").nullable().optional(),
+  external_job_id: z.string().trim().max(255).nullable().optional(),
   company_name: z.string().trim().min(1, "Company name is required").max(200),
   job_title: z.string().trim().min(1, "Job title is required").max(200),
   job_url: z.string().url("Invalid job URL").max(2000).nullable().optional(),

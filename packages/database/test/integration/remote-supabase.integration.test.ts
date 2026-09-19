@@ -415,7 +415,7 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     });
     expect(appOmitted.status).toBe("SAVED");
 
-    // (b) status SAVED -> SAVED
+    // (b) status SAVED -> SAVED (re-prep on same job)
     const appSaved = await prepareApplication(clientA, {
       job_id: job.id,
       status: "SAVED",
@@ -423,26 +423,41 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     });
     expect(appSaved.status).toBe("SAVED");
 
-    // (c) status INTERESTED -> INTERESTED
+    // (c) status INTERESTED -> INTERESTED on new job
+    const jobInterested = await createJob(clientA, {
+      company_name: "Status Interested Co",
+      job_title: "Role Interested",
+      status: "SAVED",
+    });
     const appInterested = await prepareApplication(clientA, {
-      job_id: job.id,
+      job_id: jobInterested.id,
       status: "INTERESTED",
       notes: "Status INTERESTED prep",
     });
     expect(appInterested.status).toBe("INTERESTED");
 
     // (d) New application with invalid initial status (APPLIED) throws ValidationError (INVALID_INITIAL_STATUS)
+    const jobInvalid = await createJob(clientA, {
+      company_name: "Status Invalid Co",
+      job_title: "Role Invalid",
+      status: "SAVED",
+    });
     await expect(
       prepareApplication(clientA, {
-        job_id: job.id,
+        job_id: jobInvalid.id,
         status: "APPLIED" as unknown as "SAVED",
       }),
     ).rejects.toThrow();
 
     // 3. Repeat Preparation & Immutability Lifecycle Test on Application A
+    const prepJob = await createJob(clientA, {
+      company_name: "Repeat Prep Co",
+      job_title: "Role Prep",
+      status: "SAVED",
+    });
     const key1 = crypto.randomUUID();
     const prep1App = await prepareApplication(clientA, {
-      job_id: job.id,
+      job_id: prepJob.id,
       status: "SAVED",
       resume_document_id: resumeV1.id,
       cover_letter_document_id: coverV1.id,
@@ -563,8 +578,13 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
 
     // 5. Hard Deletion & Preparation History Survival Test
     // Create isolated Application for Hard Deletion Test
+    const hardDeleteJob = await createJob(clientA, {
+      company_name: "Hard Delete Co",
+      job_title: "Hard Delete Role",
+      status: "SAVED",
+    });
     const appForHardDelete = await prepareApplication(clientA, {
-      job_id: job.id,
+      job_id: hardDeleteJob.id,
       status: "SAVED",
       resume_document_id: resumeV2.id,
       notes: "App to be hard-deleted",
@@ -882,9 +902,14 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     );
     expect(prepRejectedErr).not.toBeNull();
 
-    // 8. WITHDRAWN -> Create separate app and withdraw
+    // 8. WITHDRAWN -> Create separate job/app and withdraw
+    const job2 = await createJob(clientA, {
+      company_name: "Status Test 2",
+      job_title: "Role 2",
+      status: "SAVED",
+    });
     const app2 = await createApplication(clientA, {
-      job_id: job.id,
+      job_id: job2.id,
       status: "SAVED",
     });
     await transitionApplicationStatus(clientA, app2.id, "WITHDRAWN");
@@ -892,7 +917,7 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
       "prepare_application",
       {
         p_application_id: app2.id,
-        p_job_id: job.id,
+        p_job_id: job2.id,
         p_resume_document_id: null,
         p_cover_letter_document_id: null,
         p_notes: "Attempted prep on WITHDRAWN",
@@ -903,9 +928,14 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
     );
     expect(prepWithdrawnErr).not.toBeNull();
 
-    // 9. ARCHIVED -> Soft delete app
+    // 9. ARCHIVED -> Soft delete app on separate job
+    const job3 = await createJob(clientA, {
+      company_name: "Status Test 3",
+      job_title: "Role 3",
+      status: "SAVED",
+    });
     const app3 = await createApplication(clientA, {
-      job_id: job.id,
+      job_id: job3.id,
       status: "SAVED",
     });
     await softDeleteApplication(clientA, app3.id);
@@ -913,7 +943,7 @@ describe("Real Remote Supabase Integration & Security Suite (Phase 2C-2 & Phase 
       "prepare_application",
       {
         p_application_id: app3.id,
-        p_job_id: job.id,
+        p_job_id: job3.id,
         p_resume_document_id: null,
         p_cover_letter_document_id: null,
         p_notes: "Attempted prep on ARCHIVED",

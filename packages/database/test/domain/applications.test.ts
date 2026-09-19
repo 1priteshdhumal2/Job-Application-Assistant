@@ -7,6 +7,7 @@ import {
   getApplicationPreparation,
   softDeleteApplication,
   restoreApplication,
+  capturePortalJob,
 } from "../../src/domain/applications.js";
 import { InvalidStateTransitionError } from "@jobpilot/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -255,5 +256,69 @@ describe("Applications Service (Unit)", () => {
         application_id: "00000000-0000-0000-0000-000000000010",
       }),
     ).rejects.toThrow(InvalidStateTransitionError);
+  });
+
+  it("captures portal job atomically via RPC", async () => {
+    const mockRpcResponse = {
+      job: {
+        id: "job-1",
+        user_id: mockUser.id,
+        portal_id: "portal-1",
+        external_job_id: "indeed-123",
+        job_title: "Staff Engineer",
+        company_name: "Tech Corp",
+        job_url: "https://indeed.com/viewjob?jk=indeed-123",
+        location: "Remote",
+        status: "SAVED",
+      },
+      application: {
+        id: "app-1",
+        user_id: mockUser.id,
+        job_id: "job-1",
+        status: "SAVED",
+        deleted_at: null,
+      },
+      is_new_job: true,
+      application_created: true,
+      application_restored: false,
+    };
+
+    const rpc = vi
+      .fn()
+      .mockResolvedValue({ data: mockRpcResponse, error: null });
+    const supabase = {
+      auth: {
+        getUser: vi
+          .fn()
+          .mockResolvedValue({ data: { user: mockUser }, error: null }),
+      },
+      rpc,
+    } as unknown as SupabaseClient;
+
+    const result = await capturePortalJob(supabase, {
+      portalCode: "INDEED",
+      externalJobId: "indeed-123",
+      jobTitle: "Staff Engineer",
+      companyName: "Tech Corp",
+      jobUrl: "https://indeed.com/viewjob?jk=indeed-123",
+      location: "Remote",
+    });
+
+    expect(result.job.id).toBe("job-1");
+    expect(result.application.id).toBe("app-1");
+    expect(result.isNewJob).toBe(true);
+    expect(result.applicationCreated).toBe(true);
+    expect(result.applicationRestored).toBe(false);
+    expect(rpc).toHaveBeenCalledWith("capture_portal_job", {
+      p_portal_code: "INDEED",
+      p_external_job_id: "indeed-123",
+      p_job_title: "Staff Engineer",
+      p_company_name: "Tech Corp",
+      p_job_url: "https://indeed.com/viewjob?jk=indeed-123",
+      p_location: "Remote",
+      p_description: null,
+      p_captured_at: expect.any(String),
+      p_user_id: mockUser.id,
+    });
   });
 });
