@@ -4,9 +4,11 @@ import { handleExtensionMessage } from "../src/background/index";
 import type {
   BridgeHealthResponse,
   BridgeStatusResponse,
+  BridgeCaptureJobResponse,
+  CapturedJobPayload,
 } from "@jobpilot/types";
 
-describe("ExtensionBridgeClient & Background Message Handling (Phase 2D-3 Slice A)", () => {
+describe("ExtensionBridgeClient & Background Message Handling (Phase 2D-3 Slice A & B)", () => {
   let client: ExtensionBridgeClient;
   const mockBaseUrl = "http://127.0.0.1:4173";
 
@@ -22,6 +24,7 @@ describe("ExtensionBridgeClient & Background Message Handling (Phase 2D-3 Slice 
   it("1. checkHealth returns status: ok and authenticated: false when unauthenticated", async () => {
     const mockHealth: BridgeHealthResponse = {
       status: "ok",
+      service: "jobpilot-desktop-bridge",
       version: "1.0.0",
       authenticated: false,
       timestamp: "2026-09-17T12:00:00.000Z",
@@ -83,11 +86,10 @@ describe("ExtensionBridgeClient & Background Message Handling (Phase 2D-3 Slice 
     await client.setToken("my_secret_token");
 
     const mockStatus: BridgeStatusResponse = {
-      status: "ready",
-      version: "1.0.0",
+      connected: true,
+      desktopRunning: true,
       authenticated: true,
-      activeUser: { id: "usr_1", email: "test@example.com" },
-      timestamp: "2026-09-17T12:00:00.000Z",
+      appVersion: "1.0.0",
     };
 
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -97,7 +99,7 @@ describe("ExtensionBridgeClient & Background Message Handling (Phase 2D-3 Slice 
 
     const status = await client.getStatus();
 
-    expect(status.status).toBe("ready");
+    expect(status.connected).toBe(true);
     expect(status.authenticated).toBe(true);
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${mockBaseUrl}/api/v1/bridge/status`,
@@ -180,5 +182,95 @@ describe("ExtensionBridgeClient & Background Message Handling (Phase 2D-3 Slice 
       token: "new_paired_secret",
     });
     expect(await client.getToken()).toBe("new_paired_secret");
+  });
+
+  describe("captureJob & CAPTURE_JOB_CONTEXT (Slice B)", () => {
+    const validJob: CapturedJobPayload = {
+      portal: "indeed",
+      externalJobId: "jk_abc_123",
+      url: "https://www.indeed.com/viewjob?jk=jk_abc_123",
+      title: "Senior Node.js Developer",
+      company: "Tech Giant Inc.",
+      location: "New York, NY",
+      description: "Exciting role building distributed systems.",
+      capturedAt: "2026-09-18T10:00:00.000Z",
+    };
+
+    it("9. captureJob throws if client is not paired", async () => {
+      await expect(client.captureJob(validJob)).rejects.toThrow(
+        "Pair JobPilot with the desktop app first.",
+      );
+    });
+
+    it("10. captureJob sends authenticated POST /api/v1/bridge/capture when paired", async () => {
+      await client.setToken("paired_token_12345");
+
+      const mockResponse: BridgeCaptureJobResponse = {
+        success: true,
+        receivedAt: "2026-09-18T10:00:01.000Z",
+        job: validJob,
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      const result = await client.captureJob(validJob);
+
+      expect(result.success).toBe(true);
+      expect(result.job.title).toBe("Senior Node.js Developer");
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${mockBaseUrl}/api/v1/bridge/capture`,
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: "Bearer paired_token_12345",
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({ job: validJob }),
+        }),
+      );
+    });
+
+    it("11. handleExtensionMessage validates payload before forwarding to bridge", async () => {
+      const invalidPayload = {
+        portal: "indeed",
+        // missing externalJobId, title, company, location
+        url: "https://www.indeed.com/viewjob",
+      };
+
+      const response = await handleExtensionMessage(
+        { type: "CAPTURE_JOB_CONTEXT", payload: invalidPayload },
+        client,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain("External Job ID is required");
+    });
+
+    it("12. handleExtensionMessage successfully processes valid CAPTURE_JOB_CONTEXT", async () => {
+      await client.setToken("valid_test_token");
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          receivedAt: "2026-09-18T10:00:01.000Z",
+          job: validJob,
+        }),
+      } as Response);
+
+      const response = await handleExtensionMessage(
+        { type: "CAPTURE_JOB_CONTEXT", payload: validJob },
+        client,
+      );
+
+      expect(response.success).toBe(true);
+      expect(response.data).toMatchObject({
+        success: true,
+        job: validJob,
+      });
+    });
   });
 });

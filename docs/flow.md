@@ -401,3 +401,58 @@ sequenceDiagram
         end
     end
 ```
+
+---
+
+## 11. Indeed Job Detection, Metadata Extraction & Desktop Bridge Capture Flow (Phase 2D-3 Slice B)
+
+The sequence below illustrates the end-to-end flow from user browsing on Indeed to live capture verification on the JobPilot Desktop Dashboard:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Webpage as Indeed Page (DOM)
+    participant Content as Extension Content Script
+    participant Adapter as @jobpilot/portal-adapters
+    participant SW as Extension Service Worker
+    participant Client as ExtensionBridgeClient
+    participant Bridge as Local Bridge (127.0.0.1:4173)
+    participant Main as Electron Main Process
+    participant Renderer as Desktop Dashboard UI
+
+    User->>Webpage: Navigate to Indeed Job Page (e.g. /viewjob?jk=...)
+    Webpage->>Content: Page Load / SPA DOM Mutation
+    Content->>Adapter: isJobPage(url, document)
+    Adapter-->>Content: true (Job Page Detected)
+    Content->>Webpage: Mount single floating badge ("⚡ Apply with JobPilot")
+
+    User->>Content: Explicit Click ("⚡ Apply with JobPilot")
+    Content->>Content: Set badge state: "⏳ Capturing Job..."
+    Content->>Adapter: extractJobDetails(document, url)
+    Adapter-->>Content: ExtractedJobMetadata (title, company, location, jk, url, description)
+
+    alt Extraction Incomplete / Missing Required Fields
+        Content->>Webpage: Update badge: "⚠️ Job details unavailable"
+    else Extraction Successful
+        Content->>SW: chrome.runtime.sendMessage({ type: 'CAPTURE_JOB_CONTEXT', payload: metadata })
+        SW->>SW: validateJobPayload(metadata)
+        SW->>Client: captureJob(validatedJob)
+        Client->>Bridge: POST http://127.0.0.1:4173/api/v1/bridge/capture [Authorization: Bearer <token>]
+
+        alt Bridge Unpaired or Token Expired
+            Bridge-->>Client: 401 Unauthorized
+            Client-->>SW: Throw "Pair JobPilot with the desktop app first."
+            SW-->>Content: { success: false, error: "Pair JobPilot with the desktop app first." }
+            Content->>Webpage: Update badge: "⚠️ Pair JobPilot with desktop first"
+        else Bridge Validates & Accepts Payload
+            Bridge->>Main: Store lastCapturedJob in memory & emit onJobCaptured(job)
+            Bridge-->>Client: 200 OK { success: true, receivedAt, job }
+            Main->>Renderer: IPC mainWindow.webContents.send('jobpilot:bridge:onJobCaptured', job)
+            Renderer->>Renderer: CapturedJobCard updates live with Job Details
+            Client-->>SW: { success: true, data: response }
+            SW-->>Content: { success: true }
+            Content->>Webpage: Update badge: "✓ Sent to JobPilot Desktop"
+        end
+    end
+```

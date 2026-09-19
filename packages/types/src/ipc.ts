@@ -2,6 +2,8 @@
  * Typed Electron IPC contracts between Main Process, Preload, and Renderer.
  */
 
+import type { CapturedJobPayload } from "./bridge-protocol.js";
+
 export interface DesktopEnvironmentInfo {
   platform: string;
   arch: string;
@@ -49,6 +51,8 @@ export interface JobPilotElectronAPI {
     params: SaveDocumentFileParams,
   ) => Promise<SaveDocumentFileResult>;
   getBridgeInfo: () => Promise<DesktopBridgeInfo | null>;
+  getCapturedJob: () => Promise<CapturedJobPayload | null>;
+  onJobCaptured: (callback: (job: CapturedJobPayload) => void) => () => void;
 }
 
 declare global {

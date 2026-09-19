@@ -11,6 +11,9 @@ import {
   BridgePairResponse,
   BridgeStatusResponse,
   BridgeErrorResponse,
+  CapturedJobPayload,
+  BridgeCaptureJobRequest,
+  BridgeCaptureJobResponse,
 } from "@jobpilot/types";
 import { BridgeAuthManager } from "./auth.js";
 
@@ -28,6 +31,8 @@ export class BridgeServer {
   private port: number;
   private authManager: BridgeAuthManager;
   private isRunning: boolean = false;
+  private lastCapturedJob: CapturedJobPayload | null = null;
+  private jobCapturedListeners: Array<(job: CapturedJobPayload) => void> = [];
 
   constructor(options: BridgeServerOptions = {}) {
     this.host = options.host || DEFAULT_LOCAL_BRIDGE_HOST;
@@ -45,6 +50,25 @@ export class BridgeServer {
 
   public getHost(): string {
     return this.host;
+  }
+
+  public getLastCapturedJob(): CapturedJobPayload | null {
+    return this.lastCapturedJob;
+  }
+
+  /**
+   * Registers a listener to be notified whenever a job is captured via the bridge.
+   * Returns an unsubscribe function.
+   */
+  public onJobCaptured(
+    listener: (job: CapturedJobPayload) => void,
+  ): () => void {
+    this.jobCapturedListeners.push(listener);
+    return () => {
+      this.jobCapturedListeners = this.jobCapturedListeners.filter(
+        (l) => l !== listener,
+      );
+    };
   }
 
   public start(): Promise<void> {
@@ -245,6 +269,112 @@ export class BridgeServer {
           appVersion: APP_VERSION,
         };
         this.sendJson(res, 200, status);
+        return;
+      }
+
+      // 4. POST /api/v1/bridge/capture (Protected)
+      if (req.method === "POST" && pathname === BRIDGE_ROUTES.CAPTURE) {
+        const authHeader = req.headers.authorization;
+        if (!this.authManager.validateToken(authHeader)) {
+          this.sendError(
+            res,
+            401,
+            "UNAUTHORIZED",
+            "Invalid or missing bridge authentication token",
+          );
+          return;
+        }
+
+        const body = await this.readJsonBody<BridgeCaptureJobRequest>(req);
+        const job = body?.job;
+        if (!job) {
+          this.sendError(
+            res,
+            400,
+            "BAD_REQUEST",
+            "Request body must contain 'job' payload",
+          );
+          return;
+        }
+
+        // Validate required fields
+        if (
+          typeof job.portal !== "string" ||
+          !job.portal.trim() ||
+          typeof job.externalJobId !== "string" ||
+          !job.externalJobId.trim() ||
+          typeof job.url !== "string" ||
+          !job.url.trim() ||
+          typeof job.title !== "string" ||
+          !job.title.trim() ||
+          typeof job.company !== "string" ||
+          !job.company.trim() ||
+          typeof job.location !== "string" ||
+          !job.location.trim()
+        ) {
+          this.sendError(
+            res,
+            400,
+            "VALIDATION_ERROR",
+            "Missing or invalid required job metadata (portal, externalJobId, url, title, company, location are required)",
+          );
+          return;
+        }
+
+        // Validate URL format
+        try {
+          new URL(job.url);
+        } catch {
+          this.sendError(
+            res,
+            400,
+            "VALIDATION_ERROR",
+            "Invalid job URL format",
+          );
+          return;
+        }
+
+        const capturedJob: CapturedJobPayload = {
+          portal: job.portal.trim(),
+          externalJobId: job.externalJobId.trim(),
+          url: job.url.trim(),
+          title: job.title.trim(),
+          company: job.company.trim(),
+          location: job.location.trim(),
+          description:
+            typeof job.description === "string" && job.description.trim()
+              ? job.description.trim()
+              : undefined,
+          capturedAt: job.capturedAt || new Date().toISOString(),
+        };
+
+        // Store in memory (authoritative in Electron Main)
+        this.lastCapturedJob = capturedJob;
+        logger.info(
+          `Captured job received: "${capturedJob.title}" at "${capturedJob.company}" (${capturedJob.externalJobId})`,
+        );
+
+        // Notify subscribers
+        for (const listener of this.jobCapturedListeners) {
+          try {
+            listener(capturedJob);
+          } catch (listenerErr) {
+            logger.error(
+              `Error notifying jobCaptured listener: ${
+                listenerErr instanceof Error
+                  ? listenerErr.message
+                  : "Unknown error"
+              }`,
+            );
+          }
+        }
+
+        const response: BridgeCaptureJobResponse = {
+          success: true,
+          receivedAt: new Date().toISOString(),
+          job: capturedJob,
+        };
+        this.sendJson(res, 200, response);
         return;
       }
 

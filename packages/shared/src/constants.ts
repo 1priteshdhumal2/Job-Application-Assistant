@@ -12,6 +12,7 @@ export const BRIDGE_ROUTES = {
   HEALTH: "/api/v1/bridge/health",
   PAIR: "/api/v1/bridge/pair",
   STATUS: "/api/v1/bridge/status",
+  CAPTURE: "/api/v1/bridge/capture",
 } as const;
 
 export const IPC_CHANNELS = {
@@ -20,4 +21,6 @@ export const IPC_CHANNELS = {
   SELECT_DOCUMENT_FILE: "jobpilot:dialog:selectDocumentFile",
   SAVE_DOCUMENT_FILE: "jobpilot:dialog:saveDocumentFile",
   GET_BRIDGE_INFO: "jobpilot:bridge:getInfo",
+  GET_CAPTURED_JOB: "jobpilot:bridge:getCapturedJob",
+  ON_JOB_CAPTURED: "jobpilot:bridge:onJobCaptured",
 } as const;

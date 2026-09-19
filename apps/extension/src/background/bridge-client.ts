@@ -7,6 +7,8 @@ import {
   BridgeHealthResponse,
   BridgePairResponse,
   BridgeStatusResponse,
+  BridgeCaptureJobResponse,
+  CapturedJobPayload,
 } from "@jobpilot/types";
 
 export interface BridgeClientConfig {
@@ -104,7 +106,7 @@ export class ExtensionBridgeClient {
   }
 
   /**
-   * Exchanges a 6-digit or hex pairing code for a persistent bridge auth token.
+   * Exchanges a pairing code for a persistent bridge auth token.
    */
   public async pair(pairingCode: string): Promise<BridgePairResponse> {
     const response = await fetch(`${this.baseUrl}${BRIDGE_ROUTES.PAIR}`, {
@@ -150,5 +152,42 @@ export class ExtensionBridgeClient {
     }
 
     return response.json() as Promise<BridgeStatusResponse>;
+  }
+
+  /**
+   * Sends captured job context to the authenticated Desktop Bridge.
+   */
+  public async captureJob(
+    job: CapturedJobPayload,
+  ): Promise<BridgeCaptureJobResponse> {
+    const token = await this.getToken();
+    if (!token) {
+      throw new Error("Pair JobPilot with the desktop app first.");
+    }
+
+    const response = await fetch(`${this.baseUrl}${BRIDGE_ROUTES.CAPTURE}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ job }),
+    });
+
+    if (response.status === 401) {
+      await this.clearToken();
+      throw new Error("Pair JobPilot with the desktop app first.");
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const message =
+        (errorBody as { error?: { message?: string } })?.error?.message ||
+        `Bridge returned HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    return response.json() as Promise<BridgeCaptureJobResponse>;
   }
 }

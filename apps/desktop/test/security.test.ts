@@ -44,28 +44,40 @@ describe("Electron Security & IPC Architecture", () => {
         port: 4173,
         pairingCode: "A1B2C3D4",
       }),
+      getCapturedJob: async () => ({
+        portal: "indeed",
+        externalJobId: "jk12345",
+        url: "https://www.indeed.com/viewjob?jk=jk12345",
+        title: "Staff Engineer",
+        company: "Acme",
+        location: "Remote",
+        capturedAt: new Date().toISOString(),
+      }),
+      onJobCaptured: () => () => {},
     };
 
-    // Assert explicit methods exist and return promises
+    // Assert explicit methods exist and return promises/functions
     expect(typeof mockPreloadAPI.getAppVersion).toBe("function");
     expect(typeof mockPreloadAPI.getEnvironmentInfo).toBe("function");
     expect(typeof mockPreloadAPI.selectDocumentFile).toBe("function");
     expect(typeof mockPreloadAPI.saveDocumentFile).toBe("function");
     expect(typeof mockPreloadAPI.getBridgeInfo).toBe("function");
+    expect(typeof mockPreloadAPI.getCapturedJob).toBe("function");
+    expect(typeof mockPreloadAPI.onJobCaptured).toBe("function");
 
     // Assert that dangerous arbitrary IPC methods are absent
     const apiKeys = Object.keys(mockPreloadAPI);
     expect(apiKeys).not.toContain("send");
     expect(apiKeys).not.toContain("invoke");
     expect(apiKeys).not.toContain("sendSync");
-    expect(apiKeys).not.toContain("on");
-    expect(apiKeys).not.toContain("addListener");
     expect(apiKeys).toEqual([
       "getAppVersion",
       "getEnvironmentInfo",
       "selectDocumentFile",
       "saveDocumentFile",
       "getBridgeInfo",
+      "getCapturedJob",
+      "onJobCaptured",
     ]);
   });
 
@@ -83,6 +95,8 @@ describe("Electron Security & IPC Architecture", () => {
       selectDocumentFile: async () => ({ canceled: true }),
       saveDocumentFile: async () => ({ canceled: true, success: false }),
       getBridgeInfo: async () => null,
+      getCapturedJob: async () => null,
+      onJobCaptured: () => () => {},
     };
 
     const env = await mockPreloadAPI.getEnvironmentInfo();
@@ -116,6 +130,8 @@ describe("Electron Security & IPC Architecture", () => {
       }),
       saveDocumentFile: async () => ({ canceled: true, success: false }),
       getBridgeInfo: async () => null,
+      getCapturedJob: async () => null,
+      onJobCaptured: () => () => {},
     };
 
     const result = await mockPreloadAPI.selectDocumentFile();
@@ -145,6 +161,8 @@ describe("Electron Security & IPC Architecture", () => {
         filePath: `/downloads/${params.defaultFileName}`,
       }),
       getBridgeInfo: async () => null,
+      getCapturedJob: async () => null,
+      onJobCaptured: () => () => {},
     };
 
     const result = await mockPreloadAPI.saveDocumentFile({

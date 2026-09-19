@@ -3,13 +3,15 @@
  */
 
 export interface ExtractedJobMetadata {
-  externalJobId?: string;
-  jobUrl: string;
+  portal: string;
+  externalJobId: string;
+  url: string;
   title: string;
   company: string;
-  location?: string;
+  location: string;
   description?: string;
-  portalCode: string;
+  portalCode?: string;
+  jobUrl?: string;
 }
 
 export interface DetectedFormField {
@@ -38,9 +40,13 @@ export interface FormFillResult {
 export interface PortalAdapter {
   readonly code: string;
   readonly name: string;
-  readonly baseUrl: string;
+  readonly supportedHostnames: readonly string[];
 
   isJobPage(url: string, document?: unknown): boolean;
-  isApplicationPage(url: string, document?: unknown): boolean;
-  extractJobDetails(document: unknown, url: string): ExtractedJobMetadata;
+  isApplicationPage?(url: string, document?: unknown): boolean;
+  extractJobDetails(
+    document: unknown,
+    url: string,
+  ): ExtractedJobMetadata | null;
+  extractExternalJobId?(url: string, document?: unknown): string | null;
 }

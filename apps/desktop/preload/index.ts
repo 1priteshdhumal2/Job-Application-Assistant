@@ -6,6 +6,7 @@ import {
   SelectDocumentFileResult,
   SaveDocumentFileParams,
   SaveDocumentFileResult,
+  CapturedJobPayload,
 } from "@jobpilot/types";
 
 /**
@@ -33,6 +34,21 @@ const api: JobPilotElectronAPI = {
   },
   getBridgeInfo: async () => {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_BRIDGE_INFO);
+  },
+  getCapturedJob: async (): Promise<CapturedJobPayload | null> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_CAPTURED_JOB);
+  },
+  onJobCaptured: (callback: (job: CapturedJobPayload) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      job: CapturedJobPayload,
+    ) => {
+      callback(job);
+    };
+    ipcRenderer.on(IPC_CHANNELS.ON_JOB_CAPTURED, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.ON_JOB_CAPTURED, handler);
+    };
   },
 };
 

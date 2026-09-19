@@ -16,11 +16,16 @@ describe("BrowserExtensionCard Component (Phase 2D-3 Slice A)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete (globalThis as unknown as { window?: { jobPilot?: unknown } }).window;
+    delete (globalThis as unknown as { window?: { jobPilot?: unknown } })
+      .window;
   });
 
   it("1. renders card structure and title", () => {
-    (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window = {
+    (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window = {
       jobPilot: {
         getBridgeInfo: vi.fn().mockResolvedValue(mockBridgeInfo),
       },
@@ -33,13 +38,21 @@ describe("BrowserExtensionCard Component (Phase 2D-3 Slice A)", () => {
 
   it("2. displays pairing code and bridge host when bridge info is available", async () => {
     const getBridgeInfoMock = vi.fn().mockResolvedValue(mockBridgeInfo);
-    (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window = {
+    (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window = {
       jobPilot: {
         getBridgeInfo: getBridgeInfoMock,
       },
     };
 
-    const api = (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window.jobPilot;
+    const api = (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window.jobPilot;
     const info = await api.getBridgeInfo!();
     expect(info).toEqual(mockBridgeInfo);
     expect(info?.pairingCode).toBe("A1B2C3D4");
@@ -49,26 +62,44 @@ describe("BrowserExtensionCard Component (Phase 2D-3 Slice A)", () => {
 
   it("3. handles bridge unavailable (null returned) gracefully", async () => {
     const getBridgeInfoMock = vi.fn().mockResolvedValue(null);
-    (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window = {
+    (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window = {
       jobPilot: {
         getBridgeInfo: getBridgeInfoMock,
       },
     };
 
-    const api = (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window.jobPilot;
+    const api = (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window.jobPilot;
     const info = await api.getBridgeInfo!();
     expect(info).toBeNull();
   });
 
   it("4. handles bridge IPC error without exposing sensitive internals", async () => {
-    const getBridgeInfoMock = vi.fn().mockRejectedValue(new Error("IPC failed"));
-    (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window = {
+    const getBridgeInfoMock = vi
+      .fn()
+      .mockRejectedValue(new Error("IPC failed"));
+    (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window = {
       jobPilot: {
         getBridgeInfo: getBridgeInfoMock,
       },
     };
 
-    const api = (globalThis as unknown as { window: { jobPilot: Partial<JobPilotElectronAPI> } }).window.jobPilot;
+    const api = (
+      globalThis as unknown as {
+        window: { jobPilot: Partial<JobPilotElectronAPI> };
+      }
+    ).window.jobPilot;
     await expect(api.getBridgeInfo!()).rejects.toThrow("IPC failed");
   });
 });

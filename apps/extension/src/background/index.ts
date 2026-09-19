@@ -1,5 +1,9 @@
 import { ExtensionBridgeClient } from "./bridge-client.js";
-import { ExtensionMessage, ExtensionResponse } from "@jobpilot/types";
+import {
+  ExtensionMessage,
+  ExtensionResponse,
+  CapturedJobPayload,
+} from "@jobpilot/types";
 
 const bridgeClient = new ExtensionBridgeClient();
 
@@ -28,6 +32,71 @@ if (
       return true; // Keep channel open for async response
     },
   );
+}
+
+function validateJobPayload(
+  payload: unknown,
+): { valid: true; job: CapturedJobPayload } | { valid: false; error: string } {
+  if (!payload || typeof payload !== "object") {
+    return { valid: false, error: "Invalid job payload: expected object" };
+  }
+
+  const p = payload as Partial<CapturedJobPayload>;
+
+  if (!p.portal || typeof p.portal !== "string" || !p.portal.trim()) {
+    return { valid: false, error: "Job portal is required" };
+  }
+
+  if (
+    !p.externalJobId ||
+    typeof p.externalJobId !== "string" ||
+    !p.externalJobId.trim()
+  ) {
+    return { valid: false, error: "External Job ID is required" };
+  }
+
+  if (!p.url || typeof p.url !== "string" || !p.url.trim()) {
+    return { valid: false, error: "Job URL is required" };
+  }
+
+  try {
+    new URL(p.url);
+  } catch {
+    return { valid: false, error: "Job URL is not a valid URL format" };
+  }
+
+  if (!p.title || typeof p.title !== "string" || !p.title.trim()) {
+    return { valid: false, error: "Job title is required" };
+  }
+
+  if (!p.company || typeof p.company !== "string" || !p.company.trim()) {
+    return { valid: false, error: "Company name is required" };
+  }
+
+  if (!p.location || typeof p.location !== "string" || !p.location.trim()) {
+    return { valid: false, error: "Job location is required" };
+  }
+
+  if (p.description !== undefined && typeof p.description !== "string") {
+    return {
+      valid: false,
+      error: "Job description must be a string if provided",
+    };
+  }
+
+  return {
+    valid: true,
+    job: {
+      portal: p.portal.trim(),
+      externalJobId: p.externalJobId.trim(),
+      url: p.url.trim(),
+      title: p.title.trim(),
+      company: p.company.trim(),
+      location: p.location.trim(),
+      description: p.description ? p.description.trim() : undefined,
+      capturedAt: p.capturedAt || new Date().toISOString(),
+    },
+  };
 }
 
 export async function handleExtensionMessage(
@@ -79,6 +148,24 @@ export async function handleExtensionMessage(
           error:
             err instanceof Error ? err.message : "Failed to get bridge status",
         };
+      }
+    }
+
+    case "CAPTURE_JOB_CONTEXT": {
+      const validation = validateJobPayload(message.payload);
+      if (!validation.valid) {
+        return { success: false, error: validation.error };
+      }
+
+      try {
+        const result = await client.captureJob(validation.job);
+        return { success: true, data: result };
+      } catch (err: unknown) {
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : "Failed to forward captured job to JobPilot Desktop";
+        return { success: false, error: errorMsg };
       }
     }
 

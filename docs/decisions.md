@@ -707,3 +707,45 @@ JobPilot requires a browser extension for Chrome and Edge to detect job portals 
 - Secure, tamper-resistant bridge communication between browser extension and desktop application.
 - Extension operates with least privilege (no cloud tokens or DB credentials stored in extension).
 - Single source of truth in Electron Desktop App for resume/application preparation in subsequent slices.
+
+---
+
+## ADR 028: Indeed Detection, Portal Adapter Architecture & Job Capture Bridge (Phase 2D-3 Slice B)
+
+### Status
+
+Accepted (Phase 2D-3 Slice B)
+
+### Context
+
+Following the establishment of the secure local bridge (ADR 027), JobPilot requires the first active browser workflow: detecting Indeed job postings, extracting structured metadata upon explicit user initiation via an injected floating badge, validating the payload across boundaries, and transferring the captured job context to Electron Desktop without persisting database entities or performing premature form actions.
+
+### Decision
+
+1. **Portal Adapter Architecture (`@jobpilot/portal-adapters`)**:
+   - Implement `IndeedPortalAdapter` fulfilling the `PortalAdapter` contract.
+   - Portal-specific extraction and URL logic is isolated to the adapter, not scattered across extension content scripts.
+   - `getPortalAdapter(url)` registry enables seamless extension to future portals without refactoring core extension code.
+2. **Detection & Extraction Strategy**:
+   - URL detection inspects search parameters (`jk`, `vjk`), path patterns (`/viewjob`, `/rc/clk`, `/job/`), and DOM fallbacks (`[data-jk]`, `[data-testid='jobsearch-JobInfoHeader-title']`).
+   - Canonical external job ID is extracted directly from Indeed (`jk`/`vjk`/`data-jk`); synthetic IDs are forbidden.
+   - Required fields (`portal: "indeed"`, `externalJobId`, `url`, `title`, `company`, `location`) are strictly validated; incomplete extractions yield `null` rather than fabricated values.
+3. **Explicit User Initiation**:
+   - Detection and capture are strictly separated. Detecting a job posting mounts a single, unobtrusive floating badge (`⚡ Apply with JobPilot`) and does NOT automatically transmit data.
+   - Metadata extraction and transport occur only when the user clicks the badge.
+4. **SPA Navigation Handling**:
+   - Lightweight observation combines `popstate`, `history.pushState`/`replaceState` hooks, and a debounced (300ms) `MutationObserver`.
+   - The badge is unmounted immediately when navigating away from a job detail view.
+5. **Two-Boundary Validation & Transport**:
+   - **Boundary 1 (Background Service Worker)**: Validates incoming `CAPTURE_JOB_CONTEXT` payload before issuing HTTP requests.
+   - **Boundary 2 (Electron Bridge Server)**: Authenticates Bearer token and validates payload schema on `POST /api/v1/bridge/capture`.
+6. **In-Memory Capture State & Verification UI**:
+   - Electron Main holds `lastCapturedJob` in memory and streams updates to the renderer via typed IPC (`getCapturedJob`, `onJobCaptured`).
+   - No SQL/Supabase records (Job, Application, Preparation) are created in this slice.
+   - Temporary `CapturedJobCard` on the desktop dashboard provides real-time verification.
+
+### Consequences
+
+- Strict separation of detection, initiation, extraction, and persistence.
+- Zero credential leakage or direct network access from the content script.
+- Verified end-to-end capture foundation for upcoming application preparation slices.

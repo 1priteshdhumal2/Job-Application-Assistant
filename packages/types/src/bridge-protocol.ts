@@ -1,5 +1,5 @@
 /**
- * Local Bridge Protocol Definitions (Phase 2D-3 Slice A)
+ * Local Bridge Protocol Definitions (Phase 2D-3 Slice A & B)
  */
 
 export interface BridgeHealthResponse {
@@ -34,8 +34,32 @@ export interface BridgeErrorResponse {
   };
 }
 
+export interface CapturedJobPayload {
+  portal: string;
+  externalJobId: string;
+  url: string;
+  title: string;
+  company: string;
+  location: string;
+  description?: string;
+  capturedAt: string;
+}
+
+export interface BridgeCaptureJobRequest {
+  job: CapturedJobPayload;
+}
+
+export interface BridgeCaptureJobResponse {
+  success: boolean;
+  receivedAt: string;
+  job: CapturedJobPayload;
+}
+
 export type ExtensionMessageType =
-  "CHECK_CONNECTION" | "PAIR_BRIDGE" | "GET_BRIDGE_STATUS";
+  | "CHECK_CONNECTION"
+  | "PAIR_BRIDGE"
+  | "GET_BRIDGE_STATUS"
+  | "CAPTURE_JOB_CONTEXT";
 
 export interface ExtensionMessage<T = unknown> {
   type: ExtensionMessageType;

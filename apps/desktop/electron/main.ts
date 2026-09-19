@@ -7,6 +7,7 @@ import {
   SelectDocumentFileResult,
   SaveDocumentFileParams,
   SaveDocumentFileResult,
+  CapturedJobPayload,
 } from "@jobpilot/types";
 
 import { BridgeServer, BridgeAuthManager } from "./bridge/index.js";
@@ -194,6 +195,14 @@ function registerIpcHandlers(): void {
       pairingCode: bridgeServer.getAuthManager().getPairingCode(),
     };
   });
+
+  // 6. Captured Job Context
+  ipcMain.handle(
+    IPC_CHANNELS.GET_CAPTURED_JOB,
+    (): CapturedJobPayload | null => {
+      return bridgeServer?.getLastCapturedJob() ?? null;
+    },
+  );
 }
 
 function createWindow(): void {
@@ -250,6 +259,14 @@ app.whenReady().then(async () => {
     const authPath = path.join(app.getPath("userData"), "bridge-auth.json");
     const authManager = new BridgeAuthManager({ storagePath: authPath });
     bridgeServer = new BridgeServer({ authManager });
+
+    // Stream bridge captured jobs directly to renderer window
+    bridgeServer.onJobCaptured((job) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.ON_JOB_CAPTURED, job);
+      }
+    });
+
     await bridgeServer.start();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

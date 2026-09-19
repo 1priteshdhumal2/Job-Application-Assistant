@@ -6,9 +6,11 @@ import {
   BridgeHealthResponse,
   BridgePairResponse,
   BridgeStatusResponse,
+  BridgeCaptureJobResponse,
+  CapturedJobPayload,
 } from "@jobpilot/types";
 
-describe("Desktop Local Bridge Server & Auth (Phase 2D-3 Slice A)", () => {
+describe("Desktop Local Bridge Server & Auth (Phase 2D-3 Slice A & B)", () => {
   let bridgeServer: BridgeServer;
   let authManager: BridgeAuthManager;
   const testPort = 4174; // Use test port to avoid collision with dev server
@@ -206,5 +208,96 @@ describe("Desktop Local Bridge Server & Auth (Phase 2D-3 Slice A)", () => {
     expect(lockoutRes.status).toBe(429);
     const data = await lockoutRes.json();
     expect(data.error.code).toBe("TOO_MANY_REQUESTS");
+  });
+
+  it("13. POST /api/v1/bridge/capture rejects unauthenticated requests with 401 UNAUTHORIZED", async () => {
+    const res = await fetch(
+      `http://127.0.0.1:${testPort}${BRIDGE_ROUTES.CAPTURE}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job: {
+            portal: "indeed",
+            externalJobId: "jk12345",
+            url: "https://www.indeed.com/viewjob?jk=jk12345",
+            title: "Software Engineer",
+            company: "Acme",
+            location: "Remote",
+          },
+        }),
+      },
+    );
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("14. POST /api/v1/bridge/capture rejects malformed payloads with 400 VALIDATION_ERROR", async () => {
+    const res = await fetch(
+      `http://127.0.0.1:${testPort}${BRIDGE_ROUTES.CAPTURE}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authManager.getSecret()}`,
+        },
+        body: JSON.stringify({
+          job: {
+            portal: "indeed",
+            // missing externalJobId, title, company, location
+            url: "https://www.indeed.com/viewjob",
+          },
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("15. POST /api/v1/bridge/capture stores captured job in-memory and notifies subscribers", async () => {
+    let capturedEvent: CapturedJobPayload | null = null;
+    const unsubscribe = bridgeServer.onJobCaptured((job) => {
+      capturedEvent = job;
+    });
+
+    const jobPayload: CapturedJobPayload = {
+      portal: "indeed",
+      externalJobId: "jk987654321",
+      url: "https://www.indeed.com/viewjob?jk=jk987654321",
+      title: "Senior Full Stack Engineer",
+      company: "Stripe",
+      location: "San Francisco, CA",
+      description: "Exciting opportunity to build financial infrastructure.",
+      capturedAt: "2026-09-18T10:00:00.000Z",
+    };
+
+    const res = await fetch(
+      `http://127.0.0.1:${testPort}${BRIDGE_ROUTES.CAPTURE}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authManager.getSecret()}`,
+        },
+        body: JSON.stringify({ job: jobPayload }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as BridgeCaptureJobResponse;
+    expect(data.success).toBe(true);
+    expect(data.job.externalJobId).toBe("jk987654321");
+    expect(data.job.title).toBe("Senior Full Stack Engineer");
+    expect(data.job.company).toBe("Stripe");
+
+    // Verify authoritative memory state in BridgeServer
+    expect(bridgeServer.getLastCapturedJob()).toEqual(data.job);
+
+    // Verify listener received the job
+    expect(capturedEvent).toEqual(data.job);
+
+    unsubscribe();
   });
 });
